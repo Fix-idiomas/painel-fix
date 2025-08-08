@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão Fix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fdfaf6;
+        }
+        .tab-active {
+            border-bottom-color: #c2410c;
+            color: #c2410c;
+            font-weight: 600;
+        }
+        .tab-inactive {
+            border-bottom-color: transparent;
+            color: #475569;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 160px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 0;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -80px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #c2410c;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="antialiased text-slate-700">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center">
+            <div class="flex items-center gap-4">
+                <img id="app-logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNjYWQ0ZTEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB4PSIyIiB5PSIyIiB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHJ4PSIyLjE4IiByeT0iMi4xOCIvPjxsaW5lIHgxPSI3IiB5MT0iMiIgeDI9IjciIHkyPSIyMiIgLz48bGluZSB4MT0iMTciIHkxPSIyIiB4Mj0iMTciIHkyPSIyMiIgLz48bGluZSB4MT0iMiIgeTE9IjEyIiB4Mj0iMjIiIHkyPSIxMiIgLz48bGluZSB4MT0iMiIgeTE9IjciIHgyPSIxNyIgeTI9IjciIC8+PGxpbmUgeDE9IjIiIHkxPSIxNyIgeDI9IjciIHkyPSIxNyIgLz48bGluZSB4MT0iMTciIHkxPSIxNyIgeDI9IjIyIiB5Mj0iMTciIC8+PC9zdmc+" alt="Logo" class="h-12 w-12">
+                <div>
+                    <h1 class="text-3xl font-bold text-slate-800">Gestão Fix</h1>
+                    <p class="text-slate-500 mt-1">Sua central de controle para alunos e pagamentos.</p>
+                </div>
+            </div>
+            <div class="flex gap-2 mt-4 sm:mt-0 items-center">
+                 <button id="privacy-toggle-btn" class="bg-slate-200 text-slate-700 font-semibold px-3 py-2 rounded-lg hover:bg-slate-300 transition-colors text-sm flex items-center gap-2">
+                    <span id="privacy-icon">👁️</span> <span id="privacy-text">Ocultar Valores</span>
+                </button>
+                <div class="tooltip">
+                    <button id="import-btn" class="bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors text-sm">
+                        Importar Dados
+                    </button>
+                    <span class="tooltiptext">Carregar dados de um arquivo de backup.</span>
+                </div>
+                 <div class="tooltip">
+                    <button id="export-btn" class="bg-slate-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors text-sm">
+                        Exportar Backup
+                    </button>
+                    <span class="tooltiptext">Salvar dados atuais em um arquivo.</span>
+                </div>
+                <input type="file" id="import-file-input" class="hidden" accept=".json">
+            </div>
+        </header>
+
+        <main>
+            <div class="mb-6 border-b border-slate-200">
+                <nav class="flex -mb-px space-x-6 overflow-x-auto">
+                    <button data-tab="dashboard" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-active whitespace-nowrap">Visão Geral</button>
+                    <button data-tab="students" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Alunos Ativos</button>
+                    <button data-tab="inactive-students" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Alunos Inativos</button>
+                    <button data-tab="teachers" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Professores</button>
+                    <button data-tab="payers" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Pagadores</button>
+                    <button data-tab="payments" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Pagamentos</button>
+                    <button data-tab="progress" class="tab-btn py-4 px-1 border-b-2 text-sm font-medium tab-inactive whitespace-nowrap">Evolução Pedagógica</button>
+                </nav>
+            </div>
+
+            <div id="tab-content">
+                
+                <div id="dashboard-content" class="tab-pane">
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        <div class="xl:col-span-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Alunos Ativos</h3>
+                                    <p id="kpi-active-students" class="text-3xl font-bold text-slate-800 mt-2">0</p>
+                                </div>
+                                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Receita Mensal Prevista</h3>
+                                    <p id="kpi-monthly-revenue" class="text-3xl font-bold text-slate-800 mt-2">R$ 0,00</p>
+                                </div>
+                                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Previsão de Receita Anual</h3>
+                                    <p id="kpi-annual-revenue" class="text-3xl font-bold text-slate-800 mt-2">R$ 0,00</p>
+                                </div>
+                                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Recebido (Mês Atual)</h3>
+                                    <p id="kpi-received-this-month" class="text-3xl font-bold text-green-600 mt-2">R$ 0,00</p>
+                                </div>
+                                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Pendente (Mês Atual)</h3>
+                                    <p id="kpi-pending-this-month" class="text-3xl font-bold text-yellow-500 mt-2">R$ 0,00</p>
+                                </div>
+                                 <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                    <h3 class="text-sm font-medium text-slate-500">Atrasado (Mês Atual)</h3>
+                                    <p id="kpi-overdue-this-month" class="text-3xl font-bold text-red-500 mt-2">R$ 0,00</p>
+                                </div>
+                            </div>
+                             <div class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100">
+                                <h3 class="text-lg font-semibold text-slate-800 mb-4">Desempenho Financeiro Mensal</h3>
+                                <div class="chart-container">
+                                    <canvas id="revenueChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-6">
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                 <h3 class="text-lg font-semibold text-slate-800 mb-4">Vencimentos Próximos (5 dias)</h3>
+                                 <div id="upcoming-dues-list" class="space-y-3"></div>
+                            </div>
+                            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                 <h3 class="text-lg font-semibold text-slate-800 mb-4">Aniversariantes do Mês</h3>
+                                 <div id="birthday-list" class="space-y-3"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="students-content" class="tab-pane hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h3 class="text-lg font-semibold text-slate-800">Cadastro de Alunos Ativos</h3>
+                            <div class="flex items-center gap-2 w-full sm:w-auto">
+                                <input type="text" id="student-search" placeholder="Buscar aluno..." class="w-full sm:w-64 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                <button id="add-student-btn" class="bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors">Novo Aluno</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nome</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Contato</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Valor Mensal</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="students-table-body" class="bg-white divide-y divide-slate-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="inactive-students-content" class="tab-pane hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h3 class="text-lg font-semibold text-slate-800">Alunos Inativos</h3>
+                             <input type="text" id="inactive-student-search" placeholder="Buscar aluno inativo..." class="w-full sm:w-64 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nome</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Contato</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data de Inativação</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inactive-students-table-body" class="bg-white divide-y divide-slate-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="teachers-content" class="tab-pane hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h3 class="text-lg font-semibold text-slate-800">Cadastro de Professores</h3>
+                            <button id="add-teacher-btn" class="bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors">Novo Professor</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nome</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Contato</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="teachers-table-body" class="bg-white divide-y divide-slate-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="payers-content" class="tab-pane hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h3 class="text-lg font-semibold text-slate-800">Cadastro de Pagadores</h3>
+                            <button id="add-payer-btn" class="bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors">Novo Pagador</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nome do Pagador</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Pessoa de Contato</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">E-mail</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="payers-table-body" class="bg-white divide-y divide-slate-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="payments-content" class="tab-pane hidden">
+                     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <h3 class="text-lg font-semibold text-slate-800">Controle de Mensalidades</h3>
+                             <div class="flex items-center gap-2 w-full sm:w-auto">
+                                <select id="month-filter" class="w-full sm:w-48 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                </select>
+                                <button id="add-payment-btn" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">Pgto. Individual</button>
+                                <button id="add-group-payment-btn" class="bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors">Pgto. de Grupo</button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Aluno</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Vencimento</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Valor</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data Pagamento</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="payments-table-body" class="bg-white divide-y divide-slate-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="progress-content" class="tab-pane hidden">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-800">Evolução Pedagógica</h3>
+                                <select id="progress-student-filter" class="mt-2 w-full sm:w-72 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                    <option value="">Selecione um aluno...</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button id="analyze-progress-btn" class="bg-purple-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-300" disabled>Analisar Evolução ✨</button>
+                                <button id="add-progress-btn" class="bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors disabled:bg-orange-300" disabled>Novo Registro</button>
+                            </div>
+                        </div>
+                        <div id="progress-records-container" class="space-y-4">
+                           <p class="text-center text-slate-500 py-8">Selecione um aluno para ver seus registros de evolução.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <div id="modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-lg m-4 z-10">
+            <h3 id="modal-title" class="text-xl font-bold text-slate-800 mb-6"></h3>
+            <form id="modal-form">
+                <div id="modal-body" class="space-y-4">
+                </div>
+                <div class="flex justify-end gap-4 mt-8">
+                    <button type="button" id="modal-cancel-btn" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors">Cancelar</button>
+                    <button type="submit" id="modal-save-btn" class="px-4 py-2 rounded-lg bg-orange-600 text-white font-semibold hover:bg-orange-700 transition-colors">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="reminder-modal" class="fixed inset-0 z-50 items-center justify-center hidden">
+        <div class="modal-backdrop fixed inset-0"></div>
+        <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-lg m-4 z-10">
+            <h3 id="gemini-modal-title" class="text-xl font-bold text-slate-800 mb-4">Lembrete Gerado por IA ✨</h3>
+            <div id="reminder-modal-body" class="space-y-4">
+                <div id="reminder-loader" class="flex justify-center items-center h-32">
+                    <div class="loader"></div>
+                </div>
+                <textarea id="reminder-text" class="w-full h-40 p-2 border border-slate-300 rounded-lg bg-slate-50 hidden" readonly></textarea>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+                <button type="button" id="reminder-cancel-btn" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors">Fechar</button>
+                <button type="button" id="reminder-copy-btn" class="px-4 py-2 rounded-lg bg-orange-600 text-white font-semibold hover:bg-orange-700 transition-colors hidden">Copiar Mensagem</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            let students = [];
+            let teachers = [];
+            let payments = [];
+            let payers = [];
+            let progressRecords = [];
+            let revenueChart;
+            let isPrivacyMode = false;
+
+            const defaultStudents = [];
+            const defaultTeachers = [];
+            const defaultPayments = [];
+            const defaultPayers = [];
+            const defaultProgressRecords = [];
+
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const tabPanes = document.querySelectorAll('.tab-pane');
+            const modal = document.getElementById('modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalBody = document.getElementById('modal-body');
+            const modalForm = document.getElementById('modal-form');
+            const modalCancelBtn = document.getElementById('modal-cancel-btn');
+            const privacyToggleBtn = document.getElementById('privacy-toggle-btn');
+            const reminderModal = document.getElementById('reminder-modal');
+            const geminiModalTitle = document.getElementById('gemini-modal-title');
+
+            function saveToLocalStorage(key, data) {
+                localStorage.setItem(`gestaoFix_${key}`, JSON.stringify(data));
+            }
+            
+            function loadFromLocalStorage(key, defaultData) {
+                const storedData = localStorage.getItem(`gestaoFix_${key}`);
+                return storedData ? JSON.parse(storedData) : defaultData;
+            }
+
+            function migrateAndCleanData(paymentsData, studentsData) {
+                paymentsData.forEach(p => {
+                    const isValidDate = p.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(p.dueDate) && parseDateAsLocal(p.dueDate) !== null;
+                    if (!isValidDate) {
+                        const student = studentsData.find(s => s.id === p.studentId);
+                        let day = student ? parseInt(student.dueDay) : 1;
+                        if (!day || day < 1 || day > 31) day = 1;
+                        p.dueDate = `${p.refMonth}-${String(day).padStart(2, '0')}`;
+                    }
+                });
+                return paymentsData;
+            }
+
+            function generateMissingPayments(forMonth) {
+                const activeStudents = students.filter(s => s.status === 'Ativo');
+                let nextPaymentId = payments.length > 0 ? Math.max(...payments.map(p => p.id)) + 1 : 1;
+
+                activeStudents.forEach(student => {
+                    const studentStartDate = student.startDate ? student.startDate.slice(0, 7) : '1970-01';
+                    const startsNextMonth = student.paymentStartsNextMonth && studentStartDate === forMonth;
+
+                    if (startsNextMonth) {
+                        return; 
+                    }
+
+                    const hasPaymentForMonth = payments.some(p => p.studentId === student.id && p.refMonth === forMonth);
+                    if (!hasPaymentForMonth) {
+                        let day = parseInt(student.dueDay);
+                        if (!day || day < 1 || day > 31) day = 1;
+                        const newPayment = {
+                            id: nextPaymentId++,
+                            studentId: student.id,
+                            studentName: student.name,
+                            refMonth: forMonth,
+                            dueDate: `${forMonth}-${String(day).padStart(2, '0')}`,
+                            amount: student.monthlyFee,
+                            paymentDate: null
+                        };
+                        payments.push(newPayment);
+                    }
+                });
+                saveToLocalStorage('payments', payments);
+            }
+
+            function loadAllData() {
+                students = loadFromLocalStorage('students', defaultStudents);
+                teachers = loadFromLocalStorage('teachers', defaultTeachers);
+                let loadedPayments = loadFromLocalStorage('payments', defaultPayments);
+                payers = loadFromLocalStorage('payers', defaultPayers);
+                progressRecords = loadFromLocalStorage('progressRecords', defaultProgressRecords);
+                
+                payments = migrateAndCleanData(loadedPayments, students);
+                generateMissingPayments(new Date().toISOString().slice(0, 7));
+                
+                isPrivacyMode = loadFromLocalStorage('privacyMode', false);
+            }
+
+            function initializeApp() {
+                applyPrivacyMode();
+                updateDashboard();
+                renderStudents();
+                renderInactiveStudents();
+                renderTeachers();
+                renderPayers();
+                populateMonthFilter();
+                populateProgressStudentFilter();
+                if (document.getElementById('month-filter').value) {
+                    renderPayments(document.getElementById('month-filter').value);
+                }
+            }
+
+            function formatCurrency(value) {
+                if (isPrivacyMode) return 'R$ ****,**';
+                return (value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            }
+            
+            function formatDate(date) {
+                if (!date || !(date instanceof Date)) return '—';
+                return date.toLocaleDateString('pt-BR');
+            }
+            
+            function applyPrivacyMode() {
+                const privacyIcon = document.getElementById('privacy-icon');
+                const privacyText = document.getElementById('privacy-text');
+                if (isPrivacyMode) {
+                    privacyIcon.textContent = '🙈';
+                    privacyText.textContent = 'Mostrar Valores';
+                } else {
+                    privacyIcon.textContent = '👁️';
+                    privacyText.textContent = 'Ocultar Valores';
+                }
+                
+                updateDashboard();
+                renderStudents();
+                renderPayments(document.getElementById('month-filter').value);
+            }
+            
+            function getTodayLocal() {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return today;
+            }
+
+            function parseDateAsLocal(dateString) {
+                if (!dateString) return null;
+                const parts = dateString.split('-');
+                if (parts.length !== 3) return null;
+                const [year, month, day] = parts.map(Number);
+                if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
+                const date = new Date(year, month - 1, day);
+                if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+                    return null;
+                }
+                return date;
+            }
+
+            function getPaymentStatus(payment) {
+                if (payment.paymentDate) {
+                    return 'Pago';
+                }
+                const today = getTodayLocal();
+                const dueDate = parseDateAsLocal(payment.dueDate);
+                
+                if (!dueDate) return 'Pendente';
+
+                if (dueDate < today) {
+                    return 'Atrasado';
+                }
+                return 'Pendente';
+            }
+
+            function updateDashboard() {
+                const activeStudents = students.filter(s => s.status === 'Ativo');
+                document.getElementById('kpi-active-students').textContent = activeStudents.length;
+
+                const monthlyRevenue = activeStudents.reduce((sum, s) => sum + s.monthlyFee, 0);
+                document.getElementById('kpi-monthly-revenue').textContent = formatCurrency(monthlyRevenue);
+                document.getElementById('kpi-annual-revenue').textContent = formatCurrency(monthlyRevenue * 12);
+
+                const currentMonth = new Date().toISOString().slice(0, 7);
+                const paymentsThisMonth = payments.filter(p => p.refMonth === currentMonth);
+
+                let received = 0;
+                let pending = 0;
+                let overdue = 0;
+
+                paymentsThisMonth.forEach(p => {
+                    const status = getPaymentStatus(p);
+                    if (status === 'Pago') {
+                        received += p.amount;
+                    } else if (status === 'Pendente') {
+                        pending += p.amount;
+                    } else if (status === 'Atrasado') {
+                        overdue += p.amount;
+                    }
+                });
+
+                document.getElementById('kpi-received-this-month').textContent = formatCurrency(received);
+                document.getElementById('kpi-pending-this-month').textContent = formatCurrency(pending);
+                document.getElementById('kpi-overdue-this-month').textContent = formatCurrency(overdue);
+                
+                updateRevenueChart();
+                renderUpcomingDues();
+                renderBirthdays();
+            }
+
+            function renderUpcomingDues() {
+                const listContainer = document.getElementById('upcoming-dues-list');
+                listContainer.innerHTML = '';
+
+                const today = getTodayLocal();
+                const fiveDaysFromNow = new Date(today);
+                fiveDaysFromNow.setDate(today.getDate() + 5);
+
+                const upcoming = payments
+                    .filter(p => {
+                        const dueDate = parseDateAsLocal(p.dueDate);
+                        if (!dueDate) return false;
+
+                        const status = getPaymentStatus(p);
+                        if (status === 'Pago') return false;
+                        
+                        return dueDate >= today && dueDate <= fiveDaysFromNow;
+                    })
+                    .sort((a, b) => {
+                        const dateA = parseDateAsLocal(a.dueDate);
+                        const dateB = parseDateAsLocal(b.dueDate);
+                        return dateA - dateB;
+                    });
+
+                if (upcoming.length === 0) {
+                    listContainer.innerHTML = `<p class="text-sm text-slate-500">Nenhum vencimento nos próximos 5 dias.</p>`;
+                    return;
+                }
+
+                upcoming.forEach(p => {
+                    const dueDate = parseDateAsLocal(p.dueDate);
+                    const daysLeft = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    let dayText = daysLeft === 1 ? 'amanhã' : `em ${daysLeft} dias`;
+                    if (daysLeft === 0) dayText = 'hoje';
+
+                    const item = document.createElement('div');
+                    item.className = 'p-3 bg-slate-50 rounded-lg';
+                    item.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-800">${p.studentName}</p>
+                                <p class="text-xs text-slate-500 mt-1">Vence ${dayText} (${formatDate(dueDate)})</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-bold text-orange-600">${formatCurrency(p.amount)}</p>
+                                <button class="generate-reminder-btn text-xs text-blue-600 hover:underline" data-id="${p.id}">Lembrete ✨</button>
+                            </div>
+                        </div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            }
+
+            function renderBirthdays() {
+                const listContainer = document.getElementById('birthday-list');
+                listContainer.innerHTML = '';
+                const currentMonth = new Date().getMonth();
+                
+                const birthdayStudents = students
+                    .filter(s => s.status === 'Ativo' && s.dob && new Date(s.dob).getMonth() === currentMonth)
+                    .sort((a,b) => new Date(a.dob).getDate() - new Date(b.dob).getDate());
+
+                if (birthdayStudents.length === 0) {
+                    listContainer.innerHTML = `<p class="text-sm text-slate-500">Nenhum aniversariante este mês.</p>`;
+                    return;
+                }
+
+                birthdayStudents.forEach(s => {
+                    const birthDate = parseDateAsLocal(s.dob);
+                    const item = document.createElement('div');
+                    item.className = 'p-3 bg-blue-50 rounded-lg';
+                    item.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <p class="text-sm font-semibold text-slate-800">${s.name}</p>
+                            <p class="text-sm font-bold text-blue-600">${formatDate(birthDate)}</p>
+                        </div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            }
+
+            function updateRevenueChart() {
+                const ctx = document.getElementById('revenueChart').getContext('2d');
+                
+                const months = [...new Set(payments.map(p => p.refMonth))].sort().slice(-6);
+                
+                const labels = months.map(m => {
+                    const [year, monthNum] = m.split('-');
+                    return new Date(year, monthNum - 1).toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+                });
+
+                const receivedData = months.map(month => 
+                    payments.filter(p => p.refMonth === month && getPaymentStatus(p) === 'Pago').reduce((sum, p) => sum + p.amount, 0)
+                );
+                
+                const projectedData = months.map(month => {
+                    const studentsInMonth = new Set(payments.filter(p => p.refMonth === month).map(p => p.studentId));
+                    return Array.from(studentsInMonth).reduce((sum, studentId) => {
+                        const student = students.find(s => s.id === studentId);
+                        return sum + (student ? student.monthlyFee : 0);
+                    }, 0);
+                });
+
+
+                if (revenueChart) {
+                    revenueChart.destroy();
+                }
+
+                revenueChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Receita Realizada',
+                                data: receivedData,
+                                backgroundColor: '#16a34a',
+                                borderRadius: 4,
+                            },
+                            {
+                                label: 'Receita Prevista',
+                                data: projectedData,
+                                backgroundColor: '#e2e8f0',
+                                borderRadius: 4,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, ticks: { callback: value => formatCurrency(value) } },
+                            x: { grid: { display: false } }
+                        },
+                        plugins: {
+                            legend: { position: 'top', align: 'end' },
+                            tooltip: {
+                                callbacks: {
+                                    label: context => `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function renderStudents(filter = '') {
+                const tableBody = document.getElementById('students-table-body');
+                tableBody.innerHTML = '';
+                const activeStudents = students
+                    .filter(s => s.status === 'Ativo' && s.name.toLowerCase().includes(filter.toLowerCase()))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                if (activeStudents.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-slate-500">Nenhum aluno ativo encontrado.</td></tr>`;
+                    return;
+                }
+
+                activeStudents.forEach(student => {
+                    const teacher = teachers.find(t => t.id === student.teacherId);
+                    const teacherName = teacher ? teacher.name : 'Não definido';
+
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-semibold text-slate-900">${student.name}</div>
+                            <div class="text-sm text-slate-500">Prof: ${teacherName}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${student.contact}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">${formatCurrency(student.monthlyFee)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                            <button class="edit-student-btn text-orange-600 hover:text-orange-900" data-id="${student.id}">Editar</button>
+                            <button class="delete-student-btn text-red-600 hover:text-red-900" data-id="${student.id}">Excluir</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            function renderInactiveStudents(filter = '') {
+                const tableBody = document.getElementById('inactive-students-table-body');
+                tableBody.innerHTML = '';
+                const inactiveStudents = students
+                    .filter(s => s.status === 'Inativo' && s.name.toLowerCase().includes(filter.toLowerCase()))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                if (inactiveStudents.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-slate-500">Nenhum aluno inativo encontrado.</td></tr>`;
+                    return;
+                }
+
+                inactiveStudents.forEach(student => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-semibold text-slate-900">${student.name}</div>
+                            <div class="text-sm text-slate-500">${student.email}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${student.contact}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatDate(parseDateAsLocal(student.inactivationDate))}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                            <button class="edit-student-btn text-orange-600 hover:text-orange-900" data-id="${student.id}">Editar</button>
+                            <button class="delete-student-btn text-red-600 hover:text-red-900" data-id="${student.id}">Excluir</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            function renderTeachers() {
+                const tableBody = document.getElementById('teachers-table-body');
+                tableBody.innerHTML = '';
+
+                if (teachers.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="3" class="text-center py-8 text-slate-500">Nenhum professor cadastrado.</td></tr>`;
+                    return;
+                }
+
+                teachers.forEach(teacher => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">${teacher.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${teacher.contact || ''}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                            <button class="edit-teacher-btn text-orange-600 hover:text-orange-900" data-id="${teacher.id}">Editar</button>
+                            <button class="delete-teacher-btn text-red-600 hover:text-red-900" data-id="${teacher.id}">Excluir</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            function renderPayers() {
+                const tableBody = document.getElementById('payers-table-body');
+                tableBody.innerHTML = '';
+
+                if (payers.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-slate-500">Nenhum pagador cadastrado.</td></tr>`;
+                    return;
+                }
+
+                payers.forEach(payer => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">${payer.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${payer.contactPerson}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${payer.email}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                            <button class="edit-payer-btn text-orange-600 hover:text-orange-900" data-id="${payer.id}">Editar</button>
+                            <button class="delete-payer-btn text-red-600 hover:text-red-900" data-id="${payer.id}">Excluir</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            function populateMonthFilter() {
+                const monthFilter = document.getElementById('month-filter');
+                const currentSelection = monthFilter.value;
+                monthFilter.innerHTML = '';
+                
+                const monthSet = new Set(payments.map(p => p.refMonth));
+                const today = new Date();
+                for (let i = 0; i < 12; i++) {
+                    const date = new Date(today.getFullYear(), today.getMonth() + i, 1);
+                    const monthString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    monthSet.add(monthString);
+                }
+
+                const months = Array.from(monthSet).sort().reverse();
+                
+                months.forEach(month => {
+                    const option = document.createElement('option');
+                    const [year, monthNum] = month.split('-');
+                    const date = new Date(year, monthNum - 1);
+                    option.value = month;
+                    option.textContent = date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+                    monthFilter.appendChild(option);
+                });
+
+                if (months.includes(currentSelection)) {
+                    monthFilter.value = currentSelection;
+                } else {
+                    const currentMonthStr = new Date().toISOString().slice(0, 7);
+                    if(months.includes(currentMonthStr)){
+                        monthFilter.value = currentMonthStr;
+                    }
+                }
+            }
+
+            function renderPayments(monthFilterValue) {
+                if (!monthFilterValue) return;
+                generateMissingPayments(monthFilterValue);
+
+                const tableBody = document.getElementById('payments-table-body');
+                tableBody.innerHTML = '';
+                const filteredPayments = payments.filter(p => p.refMonth === monthFilterValue);
+
+                if (filteredPayments.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-500">Nenhum pagamento para este mês.</td></tr>`;
+                    return;
+                }
+
+                const statusStyles = {
+                    'Pago': 'bg-green-100 text-green-800',
+                    'Pendente': 'bg-yellow-100 text-yellow-800',
+                    'Atrasado': 'bg-red-100 text-red-800'
+                };
+
+                filteredPayments.forEach(payment => {
+                    const status = getPaymentStatus(payment);
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${payment.studentName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatDate(parseDateAsLocal(payment.dueDate))}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusStyles[status] || 'bg-gray-100 text-gray-800'}">
+                                ${status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800">${formatCurrency(payment.amount)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">${formatDate(parseDateAsLocal(payment.paymentDate))}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                            <button class="edit-payment-btn text-orange-600 hover:text-orange-900" data-id="${payment.id}">Editar</button>
+                            <button class="delete-payment-btn text-red-600 hover:text-red-900" data-id="${payment.id}">Excluir</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+            
+            function openModal(title, formContent, submitHandler) {
+                modalTitle.textContent = title;
+                modalBody.innerHTML = formContent;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                
+                modalForm.onsubmit = (e) => {
+                    e.preventDefault();
+                    submitHandler(new FormData(modalForm));
+                    closeModal();
+                };
+            }
+            
+            function openConfirmationModal(title, message, onConfirm) {
+                 const formContent = `<p class="text-slate-600">${message}</p>`;
+                 openModal(title, formContent, onConfirm);
+                 document.getElementById('modal-save-btn').textContent = "Confirmar";
+                 document.getElementById('modal-save-btn').classList.replace('bg-orange-600', 'bg-red-600');
+                 document.getElementById('modal-save-btn').classList.replace('hover:bg-orange-700', 'hover:bg-red-700');
+            }
+
+            function closeModal() {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                document.getElementById('modal-save-btn').textContent = "Salvar";
+                document.getElementById('modal-save-btn').classList.replace('bg-red-600', 'bg-orange-600');
+                document.getElementById('modal-save-btn').classList.replace('hover:bg-red-700', 'hover:bg-orange-700');
+                modalForm.reset();
+                modalForm.onsubmit = null;
+            }
+
+            modalCancelBtn.addEventListener('click', closeModal);
+            modal.querySelector('.modal-backdrop').addEventListener('click', closeModal);
+
+            document.getElementById('add-student-btn').addEventListener('click', () => {
+                const payerOptions = payers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                const teacherOptions = teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+                const formContent = `
+                    <input type="hidden" name="id" value="">
+                    <input type="text" name="name" placeholder="Nome completo" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                    <input type="email" name="email" placeholder="E-mail" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <input type="tel" name="contact" placeholder="Contato (Telefone/WhatsApp)" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <input type="text" name="address" placeholder="Endereço completo" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="date" name="dob" class="w-full px-3 py-2 border border-slate-300 rounded-lg" title="Data de Nascimento">
+                        <input type="text" name="cpf" placeholder="CPF" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="number" step="0.01" name="monthlyFee" placeholder="Valor Mensalidade" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                        <input type="number" name="dueDay" placeholder="Dia Vencimento" class="w-full px-3 py-2 border border-slate-300 rounded-lg" min="1" max="31" required>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-slate-700">Professor</label>
+                        <select name="teacherId" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            <option value="">Não definido</option>
+                            ${teacherOptions}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-slate-700">Responsável Financeiro</label>
+                        <select name="payerId" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            <option value="">O próprio aluno</option>
+                            ${payerOptions}
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                         <input type="checkbox" name="paymentStartsNextMonth" id="paymentStartsNextMonth" class="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500">
+                         <label for="paymentStartsNextMonth" class="text-sm text-slate-600">Primeiro pagamento no próximo mês</label>
+                    </div>
+                    <select name="status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        <option value="Ativo">Ativo</option>
+                        <option value="Inativo">Inativo</option>
+                    </select>
+                `;
+                openModal('Adicionar Novo Aluno', formContent, (formData) => {
+                    const newStudent = {
+                        id: students.length > 0 ? Math.max(...students.map(s => s.id)) + 1 : 1,
+                        name: formData.get('name'),
+                        email: formData.get('email'),
+                        contact: formData.get('contact'),
+                        address: formData.get('address'),
+                        dob: formData.get('dob'),
+                        cpf: formData.get('cpf'),
+                        monthlyFee: parseFloat(formData.get('monthlyFee')),
+                        dueDay: parseInt(formData.get('dueDay')),
+                        status: formData.get('status'),
+                        teacherId: formData.get('teacherId') ? parseInt(formData.get('teacherId')) : null,
+                        payerId: formData.get('payerId') ? parseInt(formData.get('payerId')) : null,
+                        inactivationDate: formData.get('status') === 'Inativo' ? new Date().toISOString().slice(0,10) : null,
+                        startDate: new Date().toISOString().slice(0,10),
+                        paymentStartsNextMonth: formData.get('paymentStartsNextMonth') === 'on'
+                    };
+                    students.push(newStudent);
+                    saveToLocalStorage('students', students);
+                    generateMissingPayments(new Date().toISOString().slice(0, 7));
+                    renderStudents();
+                    renderInactiveStudents();
+                    updateDashboard();
+                });
+            });
+            
+            document.getElementById('add-teacher-btn').addEventListener('click', () => {
+                const formContent = `
+                    <input type="hidden" name="id" value="">
+                    <input type="text" name="name" placeholder="Nome completo do professor" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                    <input type="tel" name="contact" placeholder="Contato (Telefone/WhatsApp)" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                `;
+                openModal('Adicionar Novo Professor', formContent, (formData) => {
+                    const newTeacher = {
+                        id: teachers.length > 0 ? Math.max(...teachers.map(t => t.id)) + 1 : 1,
+                        name: formData.get('name'),
+                        contact: formData.get('contact'),
+                    };
+                    teachers.push(newTeacher);
+                    saveToLocalStorage('teachers', teachers);
+                    renderTeachers();
+                });
+            });
+
+            document.getElementById('students-table-body').addEventListener('click', handleTableActions);
+            document.getElementById('inactive-students-table-body').addEventListener('click', handleTableActions);
+            document.getElementById('teachers-table-body').addEventListener('click', handleTableActions);
+            document.getElementById('payers-table-body').addEventListener('click', handleTableActions);
+            document.getElementById('payments-table-body').addEventListener('click', handleTableActions);
+
+            function handleTableActions(e) {
+                const target = e.target;
+                const id = parseInt(target.dataset.id);
+
+                if (target.classList.contains('edit-student-btn')) {
+                    handleEditStudent(id);
+                } else if (target.classList.contains('delete-student-btn')) {
+                    handleDeleteStudent(id);
+                } else if (target.classList.contains('edit-teacher-btn')) {
+                    handleEditTeacher(id);
+                } else if (target.classList.contains('delete-teacher-btn')) {
+                    handleDeleteTeacher(id);
+                } else if (target.classList.contains('edit-payer-btn')) {
+                    handleEditPayer(id);
+                } else if (target.classList.contains('delete-payer-btn')) {
+                    handleDeletePayer(id);
+                } else if (target.classList.contains('edit-payment-btn')) {
+                    handleEditPayment(id);
+                } else if (target.classList.contains('delete-payment-btn')) {
+                    handleDeletePayment(id);
+                }
+            }
+            
+            function handleEditStudent(studentId) {
+                const student = students.find(s => s.id === studentId);
+                if (!student) return;
+                
+                const payerOptions = payers.map(p => `<option value="${p.id}" ${student.payerId === p.id ? 'selected' : ''}>${p.name}</option>`).join('');
+                const teacherOptions = teachers.map(t => `<option value="${t.id}" ${student.teacherId === t.id ? 'selected' : ''}>${t.name}</option>`).join('');
+
+                const formContent = `
+                    <input type="hidden" name="id" value="${student.id}">
+                    <input type="text" name="name" placeholder="Nome completo" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.name}" required>
+                    <input type="email" name="email" placeholder="E-mail" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.email || ''}">
+                    <input type="tel" name="contact" placeholder="Contato (Telefone/WhatsApp)" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.contact || ''}">
+                    <input type="text" name="address" placeholder="Endereço completo" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.address || ''}">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="date" name="dob" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.dob || ''}" title="Data de Nascimento">
+                        <input type="text" name="cpf" placeholder="CPF" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.cpf || ''}">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="number" step="0.01" name="monthlyFee" placeholder="Valor Mensalidade" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${student.monthlyFee}" required>
+                        <input type="number" name="dueDay" placeholder="Dia Vencimento" class="w-full px-3 py-2 border border-slate-300 rounded-lg" min="1" max="31" value="${student.dueDay}" required>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-slate-700">Professor</label>
+                        <select name="teacherId" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            <option value="">Não definido</option>
+                            ${teacherOptions}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-slate-700">Responsável Financeiro</label>
+                        <select name="payerId" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                            <option value="">O próprio aluno</option>
+                            ${payerOptions}
+                        </select>
+                    </div>
+                    <select name="status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        <option value="Ativo" ${student.status === 'Ativo' ? 'selected' : ''}>Ativo</option>
+                        <option value="Inativo" ${student.status === 'Inativo' ? 'selected' : ''}>Inativo</option>
+                    </select>
+                `;
+
+                openModal('Editar Aluno', formContent, (formData) => {
+                    const id = parseInt(formData.get('id'));
+                    const studentIndex = students.findIndex(s => s.id === id);
+                    if (studentIndex > -1) {
+                        const oldStatus = students[studentIndex].status;
+                        const newStatus = formData.get('status');
+                        const oldDueDay = students[studentIndex].dueDay;
+                        const newDueDay = parseInt(formData.get('dueDay'));
+
+                        students[studentIndex] = {
+                            ...students[studentIndex],
+                            name: formData.get('name'),
+                            email: formData.get('email'),
+                            contact: formData.get('contact'),
+                            address: formData.get('address'),
+                            dob: formData.get('dob'),
+                            cpf: formData.get('cpf'),
+                            monthlyFee: parseFloat(formData.get('monthlyFee')),
+                            dueDay: newDueDay,
+                            status: newStatus,
+                            teacherId: formData.get('teacherId') ? parseInt(formData.get('teacherId')) : null,
+                            payerId: formData.get('payerId') ? parseInt(formData.get('payerId')) : null,
+                            inactivationDate: (oldStatus === 'Ativo' && newStatus === 'Inativo') ? new Date().toISOString().slice(0,10) : students[studentIndex].inactivationDate,
+                        };
+                        
+                        if (oldDueDay !== newDueDay) {
+                            payments.forEach(p => {
+                                if (p.studentId === id && !p.paymentDate) {
+                                    p.dueDate = `${p.refMonth}-${String(newDueDay).padStart(2, '0')}`;
+                                }
+                            });
+                            saveToLocalStorage('payments', payments);
+                        }
+
+                        saveToLocalStorage('students', students);
+                        renderStudents();
+                        renderInactiveStudents();
+                        updateDashboard();
+                    }
+                });
+            }
+            
+            function handleDeleteStudent(studentId) {
+                const student = students.find(s => s.id === studentId);
+                if (!student) return;
+                openConfirmationModal('Excluir Aluno', `Tem certeza que deseja excluir ${student.name}? Todos os pagamentos e registros associados a este aluno também serão excluídos.`, () => {
+                    students = students.filter(s => s.id !== studentId);
+                    payments = payments.filter(p => p.studentId !== studentId);
+                    progressRecords = progressRecords.filter(r => r.studentId !== studentId);
+                    saveToLocalStorage('students', students);
+                    saveToLocalStorage('payments', payments);
+                    saveToLocalStorage('progressRecords', progressRecords);
+                    renderStudents();
+                    renderInactiveStudents();
+                    populateProgressStudentFilter();
+                    updateDashboard();
+                });
+            }
+
+            function handleEditTeacher(teacherId) {
+                const teacher = teachers.find(t => t.id === teacherId);
+                if (!teacher) return;
+                const formContent = `
+                    <input type="hidden" name="id" value="${teacher.id}">
+                    <input type="text" name="name" placeholder="Nome completo do professor" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${teacher.name}" required>
+                    <input type="tel" name="contact" placeholder="Contato (Telefone/WhatsApp)" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${teacher.contact || ''}">
+                `;
+                openModal('Editar Professor', formContent, (formData) => {
+                    const id = parseInt(formData.get('id'));
+                    const teacherIndex = teachers.findIndex(t => t.id === id);
+                    if (teacherIndex > -1) {
+                        teachers[teacherIndex] = {
+                            id: id,
+                            name: formData.get('name'),
+                            contact: formData.get('contact'),
+                        };
+                        saveToLocalStorage('teachers', teachers);
+                        renderTeachers();
+                        renderStudents(); // Re-render students to update teacher names
+                    }
+                });
+            }
+
+            function handleDeleteTeacher(teacherId) {
+                const teacher = teachers.find(t => t.id === teacherId);
+                if (!teacher) return;
+                openConfirmationModal('Excluir Professor', `Tem certeza que deseja excluir ${teacher.name}? Os alunos associados não serão excluídos, mas perderão o vínculo com este professor.`, () => {
+                    teachers = teachers.filter(t => t.id !== teacherId);
+                    students.forEach(student => {
+                        if (student.teacherId === teacherId) {
+                            student.teacherId = null;
+                        }
+                    });
+                    saveToLocalStorage('teachers', teachers);
+                    saveToLocalStorage('students', students);
+                    renderTeachers();
+                    renderStudents();
+                });
+            }
+            
+            function handleEditPayer(payerId) {
+                const payer = payers.find(p => p.id === payerId);
+                if (!payer) return;
+
+                const formContent = `
+                    <input type="hidden" name="id" value="${payer.id}">
+                    <input type="text" name="name" placeholder="Nome da Empresa ou Responsável" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${payer.name}" required>
+                    <input type="text" name="contactPerson" placeholder="Pessoa de Contato" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${payer.contactPerson || ''}">
+                    <input type="email" name="email" placeholder="E-mail de Contato" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${payer.email || ''}">
+                `;
+                openModal('Editar Pagador', formContent, (formData) => {
+                    const id = parseInt(formData.get('id'));
+                    const payerIndex = payers.findIndex(p => p.id === id);
+                    if (payerIndex > -1) {
+                        payers[payerIndex] = {
+                            id: id,
+                            name: formData.get('name'),
+                            contactPerson: formData.get('contactPerson'),
+                            email: formData.get('email'),
+                        };
+                        saveToLocalStorage('payers', payers);
+                        renderPayers();
+                    }
+                });
+            }
+
+            function handleDeletePayer(payerId) {
+                const payer = payers.find(p => p.id === payerId);
+                if (!payer) return;
+                openConfirmationModal('Excluir Pagador', `Tem certeza que deseja excluir o pagador ${payer.name}? Os alunos associados não serão excluídos, mas perderão o vínculo.`, () => {
+                    payers = payers.filter(p => p.id !== payerId);
+                    students.forEach(student => {
+                        if (student.payerId === payerId) {
+                            student.payerId = null;
+                        }
+                    });
+                    saveToLocalStorage('payers', payers);
+                    saveToLocalStorage('students', students);
+                    renderPayers();
+                });
+            }
+            
+            function handleEditPayment(paymentId) {
+                const payment = payments.find(p => p.id === paymentId);
+                if (!payment) return;
+
+                const formContent = `
+                    <input type="hidden" name="id" value="${payment.id}">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium text-slate-700">Aluno</label>
+                        <p class="w-full px-3 py-2 bg-slate-100 text-slate-600 rounded-lg">${payment.studentName}</p>
+                    </div>
+                     <div class="space-y-2">
+                        <label class="text-sm font-medium text-slate-700">Data do Pagamento</label>
+                        <input type="date" name="paymentDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${payment.paymentDate || ''}">
+                    </div>
+                `;
+                openModal('Editar Pagamento', formContent, (formData) => {
+                    const id = parseInt(formData.get('id'));
+                    const paymentIndex = payments.findIndex(p => p.id === id);
+                    if (paymentIndex > -1) {
+                        payments[paymentIndex].paymentDate = formData.get('paymentDate') || null;
+                        saveToLocalStorage('payments', payments);
+                        renderPayments(document.getElementById('month-filter').value);
+                        updateDashboard();
+                    }
+                });
+            }
+
+            function handleDeletePayment(paymentId) {
+                const payment = payments.find(p => p.id === paymentId);
+                if (!payment) return;
+                openConfirmationModal('Excluir Pagamento', `Tem certeza que deseja excluir este registro de pagamento para ${payment.studentName}?`, () => {
+                    payments = payments.filter(p => p.id !== paymentId);
+                    saveToLocalStorage('payments', payments);
+                    renderPayments(document.getElementById('month-filter').value);
+                    updateDashboard();
+                });
+            }
+
+            document.getElementById('add-payer-btn').addEventListener('click', () => {
+                const formContent = `
+                    <input type="text" name="name" placeholder="Nome da Empresa ou Responsável" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                    <input type="text" name="contactPerson" placeholder="Pessoa de Contato" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    <input type="email" name="email" placeholder="E-mail de Contato" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                `;
+                openModal('Adicionar Novo Pagador', formContent, (formData) => {
+                    const newPayer = {
+                        id: payers.length > 0 ? Math.max(...payers.map(p => p.id)) + 1 : 1,
+                        name: formData.get('name'),
+                        contactPerson: formData.get('contactPerson'),
+                        email: formData.get('email'),
+                    };
+                    payers.push(newPayer);
+                    saveToLocalStorage('payers', payers);
+                    renderPayers();
+                });
+            });
+
+            document.getElementById('add-payment-btn').addEventListener('click', () => {
+                const studentOptions = students.filter(s => s.status === 'Ativo').map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+                if (!studentOptions) {
+                    alert('Cadastre um aluno ativo primeiro.');
+                    return;
+                }
+                const formContent = `
+                    <select name="studentId" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>${studentOptions}</select>
+                    <input type="month" name="refMonth" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${new Date().toISOString().slice(0,7)}" required>
+                    <input type="date" name="paymentDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                `;
+                openModal('Registrar Pagamento Individual', formContent, (formData) => {
+                    const studentId = parseInt(formData.get('studentId'));
+                    const refMonth = formData.get('refMonth');
+                    const paymentDate = formData.get('paymentDate');
+                    
+                    const existingPayment = payments.find(p => p.studentId === studentId && p.refMonth === refMonth);
+
+                    if (existingPayment) {
+                        // Apenas atualiza o pagamento existente
+                        existingPayment.paymentDate = paymentDate;
+                    } else {
+                        // Cria um novo pagamento se não existir
+                        const student = students.find(s => s.id === studentId);
+                        let day = parseInt(student.dueDay);
+                        if (!day || day < 1 || day > 31) day = 1;
+
+                        const newPayment = {
+                            id: payments.length > 0 ? Math.max(...payments.map(p => p.id)) + 1 : 1,
+                            studentId: studentId,
+                            studentName: student.name,
+                            refMonth: refMonth,
+                            dueDate: `${refMonth}-${String(day).padStart(2, '0')}`,
+                            amount: student.monthlyFee,
+                            paymentDate: paymentDate
+                        };
+                        payments.push(newPayment);
+                    }
+                    
+                    saveToLocalStorage('payments', payments);
+                    populateMonthFilter();
+                    document.getElementById('month-filter').value = refMonth;
+                    renderPayments(refMonth);
+                    updateDashboard();
+                });
+            });
+            
+            document.getElementById('add-group-payment-btn').addEventListener('click', () => {
+                const payerOptions = payers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                 if (!payerOptions) {
+                    alert('Nenhum pagador de grupo cadastrado. Adicione um na aba "Pagadores".');
+                    return;
+                }
+                const formContent = `
+                    <select name="payerId" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>${payerOptions}</select>
+                    <input type="month" name="refMonth" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${new Date().toISOString().slice(0,7)}" required>
+                    <input type="date" name="paymentDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg" required>
+                `;
+                openModal('Registrar Pagamento de Grupo', formContent, (formData) => {
+                    const payerId = parseInt(formData.get('payerId'));
+                    const refMonth = formData.get('refMonth');
+                    const paymentDate = formData.get('paymentDate');
+                    
+                    const studentsOfPayer = students.filter(s => s.payerId === payerId && s.status === 'Ativo');
+                    
+                    let nextId = payments.length > 0 ? Math.max(...payments.map(p => p.id)) + 1 : 1;
+                    studentsOfPayer.forEach(student => {
+                        let day = parseInt(student.dueDay);
+                        if (!day || day < 1 || day > 31) {
+                            day = 1; // padrão
+                        }
+                        payments.push({
+                            id: nextId++,
+                            studentId: student.id,
+                            studentName: student.name,
+                            refMonth: refMonth,
+                            dueDate: `${refMonth}-${String(day).padStart(2, '0')}`,
+                            amount: student.monthlyFee,
+                            paymentDate: paymentDate
+                        });
+                    });
+
+                    saveToLocalStorage('payments', payments);
+                    populateMonthFilter();
+                    document.getElementById('month-filter').value = refMonth;
+                    renderPayments(refMonth);
+                    updateDashboard();
+                });
+            });
+            
+            privacyToggleBtn.addEventListener('click', () => {
+                isPrivacyMode = !isPrivacyMode;
+                saveToLocalStorage('privacyMode', isPrivacyMode);
+                applyPrivacyMode();
+            });
+
+            document.getElementById('student-search').addEventListener('input', (e) => renderStudents(e.target.value));
+            document.getElementById('inactive-student-search').addEventListener('input', (e) => renderInactiveStudents(e.target.value));
+            document.getElementById('month-filter').addEventListener('change', (e) => renderPayments(e.target.value));
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const targetTab = button.dataset.tab;
+                    tabButtons.forEach(btn => btn.classList.replace('tab-active', 'tab-inactive'));
+                    button.classList.replace('tab-inactive', 'tab-active');
+                    tabPanes.forEach(pane => {
+                        pane.id === `${targetTab}-content` ? pane.classList.remove('hidden') : pane.classList.add('hidden');
+                    });
+                });
+            });
+            
+            document.getElementById('export-btn').addEventListener('click', () => {
+                const dataToExport = { students, teachers, payments, payers, progressRecords };
+                const dataStr = JSON.stringify(dataToExport, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const date = new Date().toISOString().slice(0, 10);
+                a.download = `backup_gestao_fix_${date}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            document.getElementById('import-btn').addEventListener('click', () => {
+                document.getElementById('import-file-input').click();
+            });
+
+            document.getElementById('import-file-input').addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (importedData.students) {
+                            students = importedData.students;
+                            teachers = importedData.teachers || [];
+                            payments = importedData.payments || [];
+                            payers = importedData.payers || [];
+                            progressRecords = importedData.progressRecords || [];
+                            
+                            migrateAndCleanData(payments, students);
+                            saveToLocalStorage('students', students);
+                            saveToLocalStorage('teachers', teachers);
+                            saveToLocalStorage('payments', payments);
+                            saveToLocalStorage('payers', payers);
+                            saveToLocalStorage('progressRecords', progressRecords);
+                            initializeApp();
+                            alert('Dados importados com sucesso!');
+                        } else {
+                            alert('Formato de arquivo inválido.');
+                        }
+                    } catch (error) {
+                        alert('Erro ao ler o arquivo. Verifique se o arquivo não está corrompido.');
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            });
+
+            document.body.addEventListener('click', async (e) => {
+                const reminderBtn = e.target.closest('.generate-reminder-btn');
+                if (reminderBtn) {
+                    const paymentId = parseInt(reminderBtn.dataset.id);
+                    const payment = payments.find(p => p.id === paymentId);
+                    if (!payment) return;
+
+                    reminderModal.classList.remove('hidden');
+                    reminderModal.classList.add('flex');
+                    document.getElementById('reminder-loader').classList.remove('hidden');
+                    document.getElementById('reminder-text').classList.add('hidden');
+                    document.getElementById('reminder-copy-btn').classList.add('hidden');
+
+                    const prompt = `Escreva uma mensagem de lembrete de pagamento amigável e profissional para um aluno chamado ${payment.studentName}. A mensalidade é de ${formatCurrency(payment.amount)} e o vencimento é em ${formatDate(parseDateAsLocal(payment.dueDate))}. Ofereça ajuda caso ele precise de opções de pagamento.`;
+                    
+                    let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                    const payload = { contents: chatHistory };
+                    const apiKey = "COLE_SUA_CHAVE_API_AQUI";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        const result = await response.json();
+                        const text = result.candidates[0].content.parts[0].text;
+                        
+                        document.getElementById('reminder-loader').classList.add('hidden');
+                        const reminderTextEl = document.getElementById('reminder-text');
+                        reminderTextEl.value = text;
+                        reminderTextEl.classList.remove('hidden');
+                        document.getElementById('reminder-copy-btn').classList.remove('hidden');
+                    } catch (error) {
+                        document.getElementById('reminder-loader').classList.add('hidden');
+                        const reminderTextEl = document.getElementById('reminder-text');
+                        reminderTextEl.value = "Não foi possível gerar o lembrete. Verifique sua chave de API.";
+                        reminderTextEl.classList.remove('hidden');
+                    }
+                }
+            });
+
+            document.getElementById('reminder-cancel-btn').addEventListener('click', () => {
+                reminderModal.classList.add('hidden');
+                reminderModal.classList.remove('flex');
+            });
+            
+            document.getElementById('reminder-copy-btn').addEventListener('click', () => {
+                const reminderText = document.getElementById('reminder-text');
+                reminderText.select();
+                document.execCommand('copy');
+                alert('Mensagem copiada!');
+            });
+
+            function populateProgressStudentFilter() {
+                const filter = document.getElementById('progress-student-filter');
+                filter.innerHTML = '<option value="">Selecione um aluno...</option>';
+                const activeStudents = students.filter(s => s.status === 'Ativo').sort((a, b) => a.name.localeCompare(b.name));
+                activeStudents.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.id;
+                    option.textContent = student.name;
+                    filter.appendChild(option);
+                });
+            }
+
+            document.getElementById('progress-student-filter').addEventListener('change', (e) => {
+                const studentId = e.target.value;
+                const addBtn = document.getElementById('add-progress-btn');
+                const analyzeBtn = document.getElementById('analyze-progress-btn');
+                if (studentId) {
+                    addBtn.disabled = false;
+                    analyzeBtn.disabled = false;
+                    renderProgressRecords(parseInt(studentId));
+                } else {
+                    addBtn.disabled = true;
+                    analyzeBtn.disabled = true;
+                    document.getElementById('progress-records-container').innerHTML = `<p class="text-center text-slate-500 py-8">Selecione um aluno para ver seus registros de evolução.</p>`;
+                }
+            });
+
+            function renderProgressRecords(studentId) {
+                const container = document.getElementById('progress-records-container');
+                container.innerHTML = '';
+                const records = progressRecords.filter(r => r.studentId === studentId).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                if (records.length === 0) {
+                    container.innerHTML = `<p class="text-center text-slate-500 py-8">Nenhum registro de evolução para este aluno.</p>`;
+                    return;
+                }
+
+                records.forEach(record => {
+                    const item = document.createElement('div');
+                    item.className = 'p-4 bg-slate-50 rounded-lg border border-slate-200';
+                    item.innerHTML = `
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-semibold text-slate-800">${formatDate(parseDateAsLocal(record.date))}</p>
+                            <button class="delete-progress-btn text-xs text-red-500 hover:underline" data-id="${record.id}">Excluir</button>
+                        </div>
+                        <p class="text-sm text-slate-600 whitespace-pre-wrap">${record.notes}</p>
+                    `;
+                    container.appendChild(item);
+                });
+            }
+
+            document.getElementById('add-progress-btn').addEventListener('click', () => {
+                const studentId = parseInt(document.getElementById('progress-student-filter').value);
+                if (!studentId) return;
+
+                const formContent = `
+                    <input type="hidden" name="studentId" value="${studentId}">
+                    <input type="date" name="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg" value="${new Date().toISOString().slice(0,10)}" required>
+                    <textarea name="notes" placeholder="Digite suas observações sobre a aula, progresso, dificuldades, etc." class="w-full h-32 px-3 py-2 border border-slate-300 rounded-lg" required></textarea>
+                `;
+                openModal('Adicionar Registro de Evolução', formContent, (formData) => {
+                    const newRecord = {
+                        id: progressRecords.length > 0 ? Math.max(...progressRecords.map(r => r.id)) + 1 : 1,
+                        studentId: parseInt(formData.get('studentId')),
+                        date: formData.get('date'),
+                        notes: formData.get('notes')
+                    };
+                    progressRecords.push(newRecord);
+                    saveToLocalStorage('progressRecords', progressRecords);
+                    renderProgressRecords(newRecord.studentId);
+                });
+            });
+
+            document.getElementById('analyze-progress-btn').addEventListener('click', async () => {
+                const studentId = parseInt(document.getElementById('progress-student-filter').value);
+                if (!studentId) return;
+
+                const studentRecords = progressRecords.filter(r => r.studentId === studentId);
+                if (studentRecords.length === 0) {
+                    alert('Não há registros suficientes para analisar.');
+                    return;
+                }
+                
+                geminiModalTitle.textContent = "Análise de Evolução ✨";
+                reminderModal.classList.remove('hidden');
+                reminderModal.classList.add('flex');
+                document.getElementById('reminder-loader').classList.remove('hidden');
+                document.getElementById('reminder-text').classList.add('hidden');
+                document.getElementById('reminder-copy-btn').classList.add('hidden');
+
+                const observations = studentRecords.map(r => `Em ${formatDate(parseDateAsLocal(r.date))}: ${r.notes}`).join('\n');
+                const studentName = students.find(s => s.id === studentId).name;
+                const prompt = `Analise o seguinte histórico de evolução pedagógica para o aluno ${studentName}. Com base nas anotações, gere um resumo conciso identificando os principais pontos fortes, as áreas que precisam de mais atenção e sugira os próximos passos ou focos para as aulas futuras.\n\nHistórico:\n${observations}`;
+
+                let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = { contents: chatHistory };
+                const apiKey = "COLE_SUA_CHAVE_API_AQUI";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    const text = result.candidates[0].content.parts[0].text;
+                    
+                    document.getElementById('reminder-loader').classList.add('hidden');
+                    const reminderTextEl = document.getElementById('reminder-text');
+                    reminderTextEl.value = text;
+                    reminderTextEl.classList.remove('hidden');
+                    document.getElementById('reminder-copy-btn').classList.remove('hidden');
+                } catch (error) {
+                    document.getElementById('reminder-loader').classList.add('hidden');
+                    const reminderTextEl = document.getElementById('reminder-text');
+                    reminderTextEl.value = "Não foi possível gerar a análise. Verifique sua chave de API.";
+                    reminderTextEl.classList.remove('hidden');
+                }
+            });
+
+            document.getElementById('progress-records-container').addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-progress-btn')) {
+                    const recordId = parseInt(e.target.dataset.id);
+                    const record = progressRecords.find(r => r.id === recordId);
+                    if (!record) return;
+                    
+                    openConfirmationModal('Excluir Registro', 'Tem certeza que deseja excluir este registro de evolução?', () => {
+                        progressRecords = progressRecords.filter(r => r.id !== recordId);
+                        saveToLocalStorage('progressRecords', progressRecords);
+                        renderProgressRecords(record.studentId);
+                    });
+                }
+            });
+
+            loadAllData();
+            initializeApp();
+        });
+    </script>
+</body>
+</html>
