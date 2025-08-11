@@ -35,7 +35,7 @@ export default function LoginForm({ onLogin }) {
       <input
         type="email"
         placeholder="E-mail"
-        className="border rounded px-3 py-2"
+        className="border rounded px-3 py-2 text-slate-800 placeholder-slate-400 bg-white"
         value={email}
         onChange={e => setEmail(e.target.value)}
         required
@@ -43,7 +43,7 @@ export default function LoginForm({ onLogin }) {
       <input
         type="password"
         placeholder="Senha"
-        className="border rounded px-3 py-2"
+        className="border rounded px-3 py-2 text-slate-800 placeholder-slate-400 bg-white"
         value={password}
         onChange={e => setPassword(e.target.value)}
         required
@@ -69,7 +69,7 @@ export default function LoginForm({ onLogin }) {
           <input
             type="email"
             placeholder="Seu e-mail"
-            className="border rounded px-3 py-2"
+            className="border rounded px-3 py-2 text-slate-800 placeholder-slate-400 bg-white"
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
