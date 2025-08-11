@@ -27,9 +27,9 @@ export default function LoginPage() {
         <img
           src="/Logo Oficial.png"
           alt="Logo"
-          className="w-20 h-20 sm:w-68 sm:h-28 mb-4 rounded-full shadow object-contain"
+          className="w-20 h-20 sm:w-28 sm:h-28 mb-4 rounded-full shadow object-contain"
         />
-        <h1 className="text-xl sm:text-2xl font-bold mb-2 text-slate-800">Bem-vindo ao Painel Fix</h1>
+        <h1 className="text-xl sm:text-2xl font-bold mb-2 text-slate-800 text-center">Bem-vindo ao Painel Fix</h1>
         <p className="text-slate-500 mb-4 sm:mb-6 text-center text-sm sm:text-base">
           Let's take care of your business.
         </p>
