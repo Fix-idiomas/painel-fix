@@ -12,13 +12,43 @@ import { downloadCsv } from '@/lib/exportCsv'
 import { supabase } from '@/lib/supabaseClient'
 import { saveAs } from 'file-saver'
 import Header from '@/components/Header'
-import PedagogicalProgress from '@/components/PedagogicalProgress' // ADICIONE ESTA LINHA
+import PedagogicalProgress from '@/components/PedagogicalProgress'
+import { useRouter } from 'next/navigation'
 
 function yyyymm(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`
 }
 
+function LogoutButton() {
+  const router = useRouter()
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+  return (
+    <button
+      onClick={handleLogout}
+      className="absolute top-4 right-4 bg-slate-200 px-4 py-2 rounded"
+    >
+      Sair
+    </button>
+  )
+}
+
 export default function Page() {
+  // ---------- AUTENTICAÇÃO ----------
+  const router = useRouter()
+  const [authLoading, setAuthLoading] = useState(true)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) router.push('/login')
+      else setUser(data.user)
+      setAuthLoading(false)
+    })
+  }, [router])
+
   // ---------- ESTADOS ----------
   const [students, setStudents] = useState([])
   const [payments6m, setPayments6m] = useState([])
@@ -76,12 +106,13 @@ export default function Page() {
     .reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const projectedThisMonth = pmCurrent.reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const pendingThisMonth = Math.max(projectedThisMonth - receivedThisMonth, 0)
-  // "atrasado" faz mais sentido olhar o mês passado
-  const prevMonth = yyyymm(new Date(new Date().getFullYear(), new Date().getMonth()-1,1))
-  const pmPrev = payments6m.filter(p => p.ref_month === prevMonth)
-  const overduePrev = pmPrev
-    .filter(p => !p.payment_date)
-    .reduce((sum,p)=> sum + Number(p.amount||0), 0)
+
+  // NOVO: Pagamentos atrasados (qualquer mês, vencidos e não pagos)
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  const overdue = payments6m
+    .filter(p => !p.payment_date && p.due_date && new Date(p.due_date) < today)
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
   const currency = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
 
@@ -104,8 +135,6 @@ export default function Page() {
   )
 
   // ---------- VENCIMENTOS PRÓXIMOS (5 DIAS) ----------
-  const today = new Date()
-  today.setHours(0,0,0,0)
   const fiveDaysLater = new Date(today)
   fiveDaysLater.setDate(today.getDate() + 5)
   fiveDaysLater.setHours(23,59,59,999)
@@ -139,7 +168,7 @@ export default function Page() {
       { metrica: 'Previsão de Receita Anual', valor: annual },
       { metrica: 'Recebido (Mês Atual)', valor: receivedThisMonth },
       { metrica: 'Pendente (Mês Atual)', valor: pendingThisMonth },
-      { metrica: 'Atrasado (Mês Passado)', valor: overduePrev },
+      { metrica: 'Atrasado', valor: overdue },
     ]
     downloadCsv('kpis.csv', rows)
   }
@@ -200,7 +229,7 @@ export default function Page() {
           {/* KPIs de pagamentos (reais) com label colorido */}
           <KpiCard label="Recebido (Mês Atual)" value={showValues ? currency(receivedThisMonth) : '•••'} labelClassName="text-green-600" />
           <KpiCard label="Pendente (Mês Atual)" value={showValues ? currency(pendingThisMonth) : '•••'} labelClassName="text-yellow-600" />
-          <KpiCard label="Atrasado (Mês Passado)" value={showValues ? currency(overduePrev) : '•••'} labelClassName="text-red-600" />
+          <KpiCard label="Atrasado" value={showValues ? currency(overdue) : '•••'} labelClassName="text-red-600" />
         </div>
 
         <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100">
@@ -259,7 +288,7 @@ export default function Page() {
     { key: 'teachers', label: 'Professores', content: <TeachersTable /> },
     { key: 'payers', label: 'Pagadores', content: <PayersTable /> },
     { key: 'payments', label: 'Pagamentos', content: <PaymentsTable /> },
-    { key: 'progress', label: 'Evolução Pedagógica', content: <PedagogicalProgress /> }, // ALTERE AQUI
+    { key: 'progress', label: 'Evolução Pedagógica', content: <PedagogicalProgress /> },
   ]
 
   // Atualiza refreshInactive ao trocar para a aba de inativos
@@ -269,8 +298,12 @@ export default function Page() {
     if (key === 'inactive-students') setRefreshInactive(v => v + 1)
   }
 
+  if (authLoading) return <div>Carregando...</div>
+  if (!user) return null
+
   return (
     <main>
+      <LogoutButton />
       <Header
         onExport={handleExportCsv}
         onImport={handleImportData}

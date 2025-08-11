@@ -92,15 +92,47 @@ export default function StudentsTable({ onInactivate }) {
       monthly_fee: form.monthly_fee ? Number(form.monthly_fee) : null,
       due_day: form.due_day ? Number(form.due_day) : null,
       teacher: form.teacher ? Number(form.teacher) : null,
-      payer: form.payer ? Number(form.payer) : null, // Aqui é o segredo!
+      payer: form.payer ? Number(form.payer) : null,
       next_month: !!form.next_month,
       status: form.status || null
     }
-    console.log('Salvando aluno:', dataToSave)
     if (editId) {
       await supabase.from('students').update(dataToSave).eq('id', editId)
+      alert('Aluno atualizado com sucesso!')
     } else {
-      await supabase.from('students').insert([dataToSave])
+      // 1. Cadastra o aluno
+      const { data: aluno, error: alunoError } = await supabase.from('students').insert([dataToSave]).select().single()
+      if (alunoError) {
+        alert('Erro ao cadastrar aluno!')
+        return
+      }
+
+      // 2. Cria o pagamento automático se mensalidade e vencimento forem preenchidos
+      if (form.monthly_fee && form.due_day) {
+        const hoje = new Date()
+        let mes = hoje.getMonth()
+        let ano = hoje.getFullYear()
+        if (form.next_month) {
+          mes += 1
+          if (mes > 11) { mes = 0; ano += 1 }
+        }
+        const ref_month = `${ano}-${String(mes+1).padStart(2, '0')}`
+        const due_date = new Date(ano, mes, Number(form.due_day))
+        due_date.setHours(0,0,0,0)
+        const { error: pagamentoError } = await supabase.from('payments').insert([{
+          student_id: aluno.id,
+          amount: form.monthly_fee,
+          due_date: due_date.toISOString().slice(0,10),
+          ref_month,
+        }])
+        if (pagamentoError) {
+          alert('Aluno cadastrado, mas erro ao criar pagamento!')
+        } else {
+          alert('Aluno e pagamento cadastrados com sucesso!')
+        }
+      } else {
+        alert('Aluno cadastrado! (Pagamento não criado por falta de valor ou vencimento)')
+      }
     }
     setShowModal(false)
     setEditId(null)
