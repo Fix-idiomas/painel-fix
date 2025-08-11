@@ -23,3 +23,11 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 /* ...existing code... */
+input:-webkit-autofill,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset !important;
+  -webkit-text-fill-color: #1e293b !important; /* slate-800 */
+  caret-color: #1e293b !important;
+}
