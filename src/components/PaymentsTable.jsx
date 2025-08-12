@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dialog } from '@headlessui/react'
 import { CheckCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { supabase } from '@/lib/supabaseClient'
@@ -9,6 +9,9 @@ export default function PaymentsTable() {
   const [students, setStudents] = useState([])
   const [payers, setPayers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState(null)
+
+  // mês selecionado (YYYY-MM)
   const [month, setMonth] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -27,144 +30,185 @@ export default function PaymentsTable() {
   const [editDate, setEditDate] = useState('')
   const [editAmount, setEditAmount] = useState('')
 
+  // pega org_id do token
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      const { data: studentsData } = await supabase.from('students').select('id, name, payer')
-      setStudents(studentsData || [])
-      const { data: payersData } = await supabase.from('payers').select('id, name')
-      setPayers(payersData || [])
-      const { data: paymentsData } = await supabase
-        .from('payments')
-        .select('id, student_id, amount, due_date, payment_date, status')
-        .eq('ref_month', month)
-      setPayments(paymentsData || [])
-      setLoading(false)
-    }
-    load()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      const meta = user?.user_metadata ?? {}
+      setOrgId(typeof meta.org_id === 'number' ? meta.org_id : Number(meta.org_id) || null)
+    })
+  }, [])
+
+  // helpers de intervalo do mês
+  const { monthStart, nextMonthStart } = useMemo(() => {
+    const [y, m] = month.split('-').map(n => Number(n))
+    const start = new Date(y, m - 1, 1)
+    const next = new Date(y, m, 1)
+    const toYMD = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    return { monthStart: toYMD(start), nextMonthStart: toYMD(next) }
   }, [month])
 
+  // normaliza status do banco para open/paid/canceled
+  const norm = (s) => {
+    const v = String(s ?? '').trim().toLowerCase()
+    if (v === 'paid' || v === 'pago') return 'paid'
+    if (v === 'canceled' || v === 'cancelado' || v === 'cancelada') return 'canceled'
+    return 'open' // inclui 'pendente', null, vazio, overdue etc.
+  }
+
+  // mapa de alunos
   const studentsMap = useMemo(() => {
     const map = {}
     students.forEach(s => { map[s.id] = s })
     return map
   }, [students])
 
+  // carrega dados do mês (filtra cancelados e inativos)
+  useEffect(() => {
+    if (orgId == null) return
+    let isMounted = true
+
+    async function load() {
+      setLoading(true)
+
+      // alunos (precisamos de name/status/payer)
+      const { data: studentsData } = await supabase
+        .from('students')
+        .select('id, name, status, payer, org_id')
+        .eq('org_id', orgId)
+
+      // pagadores (para o modal de grupo)
+      const { data: payersData } = await supabase
+        .from('payers')
+        .select('id, name, org_id')
+        .eq('org_id', orgId)
+
+      // payments do mês (com join para pegar status do aluno)
+      const { data: paymentsData } = await supabase
+        .from('payments')
+        .select(`
+          id, student_id, amount, due_date, payment_date, status, org_id,
+          students!inner ( id, status )
+        `)
+        .eq('org_id', orgId)
+        .gte('due_date', monthStart)
+        .lt('due_date', nextMonthStart)
+        .order('due_date', { ascending: true })
+
+      if (!isMounted) return
+
+      const onlyActiveAndNotCanceled = (paymentsData || []).filter(p =>
+        (p.students?.status === 'Ativo') && norm(p.status) !== 'canceled'
+      )
+
+      setStudents(studentsData || [])
+      setPayers(payersData || [])
+      setPayments(onlyActiveAndNotCanceled)
+      setLoading(false)
+    }
+
+    load()
+    return () => { isMounted = false }
+  }, [month, orgId, monthStart, nextMonthStart])
+
   // Alunos ativos sem pagador (para pgto individual)
   const alunosIndividuais = useMemo(() =>
-    students.filter(s => !s.payer && s.name?.toLowerCase().includes(searchAluno.toLowerCase()))
+    students
+      .filter(s => s.status === 'Ativo' && !s.payer && (s.name || '').toLowerCase().includes(searchAluno.toLowerCase()))
   , [students, searchAluno])
 
-  // Pagadores disponíveis (tem alunos pendentes)
+  // Pagadores com pendências (considera apenas payments que carregamos – já sem cancelados)
   const pagadoresDisponiveis = useMemo(() => {
-    const pendentes = payments.filter(p => p.status !== 'Pago')
-    const pagadoresSet = new Set()
+    const pendentes = payments.filter(p => norm(p.status) === 'open')
+    const setIds = new Set()
     pendentes.forEach(p => {
       const aluno = studentsMap[p.student_id]
-      if (aluno && aluno.payer) pagadoresSet.add(aluno.payer)
+      if (aluno?.payer) setIds.add(aluno.payer)
     })
     return payers
-      .filter(p => pagadoresSet.has(p.id) && p.name?.toLowerCase().includes(searchPayer.toLowerCase()))
+      .filter(p => setIds.has(p.id) && (p.name || '').toLowerCase().includes(searchPayer.toLowerCase()))
   }, [payments, studentsMap, payers, searchPayer])
 
-  // Marcar pagamento individual
+  // --------- Ações ---------
+
+  // Pgto individual: marca o primeiro pendente do mês como pago
   async function pagarIndividual(studentId) {
     setProcessing(true)
-    const pagamento = payments.find(p => p.student_id === studentId && p.status !== 'Pago')
-    if (!pagamento) {
-      setProcessing(false)
-      return
-    }
+    const pagamento = payments.find(p => p.student_id === studentId && norm(p.status) === 'open')
+    if (!pagamento) { setProcessing(false); return }
+    const hoje = new Date(); const ymd = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`
+
     await supabase.from('payments').update({
       status: 'Pago',
-      payment_date: new Date().toISOString().slice(0, 10)
-    }).eq('id', pagamento.id)
-    setPayments(payments =>
-      payments.map(p => p.id === pagamento.id
-        ? { ...p, status: 'Pago', payment_date: new Date().toISOString().slice(0, 10) }
-        : p
-      )
-    )
+      payment_date: ymd
+    }).eq('id', pagamento.id).eq('org_id', orgId)
+
+    setPayments(list => list.map(p => p.id === pagamento.id ? { ...p, status: 'Pago', payment_date: ymd } : p))
     setProcessing(false)
     setSuccessMsg('Pagamento individual realizado com sucesso!')
     setShowIndividualModal(false)
     setTimeout(() => setSuccessMsg(''), 2500)
   }
 
-  // Marcar grupo como pago
+  // Pgto por grupo (payer)
   async function pagarGrupo(payerId) {
     setProcessing(true)
-    const alunos = students.filter(s => s.payer === payerId).map(s => s.id)
-    const pendentes = payments.filter(p => alunos.includes(p.student_id) && p.status !== 'Pago')
+    const alunos = students.filter(s => s.payer === payerId && s.status === 'Ativo').map(s => s.id)
+    const pendentes = payments.filter(p => alunos.includes(p.student_id) && norm(p.status) === 'open')
     const ids = pendentes.map(p => p.id)
-    if (ids.length === 0) {
-      setProcessing(false)
-      return
-    }
+    if (ids.length === 0) { setProcessing(false); return }
+
+    const hoje = new Date(); const ymd = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`
+
     await supabase.from('payments').update({
       status: 'Pago',
-      payment_date: new Date().toISOString().slice(0, 10)
-    }).in('id', ids)
-    setPayments(payments =>
-      payments.map(p => ids.includes(p.id)
-        ? { ...p, status: 'Pago', payment_date: new Date().toISOString().slice(0, 10) }
-        : p
-      )
-    )
+      payment_date: ymd
+    }).in('id', ids).eq('org_id', orgId)
+
+    setPayments(list => list.map(p => ids.includes(p.id) ? { ...p, status: 'Pago', payment_date: ymd } : p))
     setProcessing(false)
     setSuccessMsg('Pagamentos do grupo realizados com sucesso!')
     setShowGroupModal(false)
     setTimeout(() => setSuccessMsg(''), 2500)
   }
 
-  // Função para desfazer pagamento
+  // Desfazer pagamento
   async function handleUndo(paymentId) {
     await supabase.from('payments').update({
       status: 'Pendente',
       payment_date: null
-    }).eq('id', paymentId)
-    setPayments(payments =>
-      payments.map(p =>
-        p.id === paymentId
-          ? { ...p, status: 'Pendente', payment_date: null }
-          : p
-      )
-    )
+    }).eq('id', paymentId).eq('org_id', orgId)
+
+    setPayments(list => list.map(p => p.id === paymentId ? { ...p, status: 'Pendente', payment_date: null } : p))
   }
 
-  // Função para editar pagamento (abre modal)
+  // Editar
   function handleEdit(payment) {
     setEditPayment(payment)
     setEditDate(payment.payment_date || '')
-    setEditAmount(payment.amount || '')
+    setEditAmount(payment.amount ?? '')
   }
-
-  // Salvar edição do pagamento
   async function handleEditSave() {
     await supabase.from('payments').update({
-      payment_date: editDate,
-      amount: Number(editAmount)
-    }).eq('id', editPayment.id)
-    setPayments(payments =>
-      payments.map(p =>
-        p.id === editPayment.id
-          ? { ...p, payment_date: editDate, amount: Number(editAmount) }
-          : p
-      )
-    )
+      payment_date: editDate || null,
+      amount: Number(editAmount) || 0
+    }).eq('id', editPayment.id).eq('org_id', orgId)
+    setPayments(list => list.map(p => p.id === editPayment.id ? { ...p, payment_date: editDate || null, amount: Number(editAmount) || 0 } : p))
     setEditPayment(null)
   }
 
-  // Função para excluir
+  // Excluir
   async function handleDelete(paymentId) {
     if (!window.confirm('Tem certeza que deseja excluir este pagamento?')) return
-    await supabase.from('payments').delete().eq('id', paymentId)
-    setPayments(payments => payments.filter(p => p.id !== paymentId))
+    await supabase.from('payments').delete().eq('id', paymentId).eq('org_id', orgId)
+    setPayments(list => list.filter(p => p.id !== paymentId))
   }
+
+  // --------- UI ---------
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 relative">
       <h2 className="text-xl font-bold mb-6 text-slate-800">Controle de Mensalidades</h2>
+
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
         <select
           className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -179,6 +223,7 @@ export default function PaymentsTable() {
             return <option key={value} value={value}>{label}</option>
           })}
         </select>
+
         <div className="flex gap-2 w-full sm:w-auto">
           <button
             className="bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors"
@@ -208,9 +253,7 @@ export default function PaymentsTable() {
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <Dialog.Panel className="bg-white rounded-lg p-6 shadow-lg w-full max-w-md">
-            <Dialog.Title className="font-bold text-lg mb-2">
-              Editar Pagamento
-            </Dialog.Title>
+            <Dialog.Title className="font-bold text-lg mb-2">Editar Pagamento</Dialog.Title>
             {editPayment && (
               <div className="mb-4 text-slate-700 font-semibold">
                 {studentsMap[editPayment.student_id]?.name}
@@ -235,18 +278,8 @@ export default function PaymentsTable() {
               />
             </div>
             <div className="flex justify-end gap-2">
-              <button
-                className="px-4 py-2 rounded bg-gray-200 text-slate-700"
-                onClick={() => setEditPayment(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700"
-                onClick={handleEditSave}
-              >
-                Salvar
-              </button>
+              <button className="px-4 py-2 rounded bg-gray-200 text-slate-700" onClick={() => setEditPayment(null)}>Cancelar</button>
+              <button className="px-4 py-2 rounded bg-orange-600 text-white font-semibold hover:bg-orange-700" onClick={handleEditSave}>Salvar</button>
             </div>
           </Dialog.Panel>
         </div>
@@ -346,30 +379,25 @@ export default function PaymentsTable() {
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
             {loading ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-slate-500">Carregando...</td>
-              </tr>
+              <tr><td colSpan={6} className="text-center py-8 text-slate-500">Carregando...</td></tr>
             ) : payments.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-slate-500">Nenhum pagamento encontrado.</td>
-              </tr>
+              <tr><td colSpan={6} className="text-center py-8 text-slate-500">Nenhum pagamento encontrado.</td></tr>
             ) : (
               payments.map((p) => {
                 const student = studentsMap[p.student_id] || {}
-                const isPago = p.status === 'Pago'
-                const isPendente = p.status !== 'Pago'
                 const dueDate = p.due_date ? new Date(p.due_date) : null
-                const today = new Date()
-                today.setHours(0,0,0,0)
-                const isAtrasado = isPendente && dueDate && dueDate < today
-                const isVencendo = isPendente && dueDate && dueDate >= today && dueDate <= new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000)
+                const today = new Date(); today.setHours(0,0,0,0)
+                const isPaid = norm(p.status) === 'paid'
+                const isOpen = norm(p.status) === 'open'
+                const isAtrasado = isOpen && dueDate && dueDate < today
+                const isVencendo = isOpen && dueDate && dueDate >= today && dueDate <= new Date(today.getTime() + 5*24*60*60*1000)
 
                 return (
                   <tr key={p.id} className="hover:bg-slate-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">{student.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">{dueDate ? dueDate.toLocaleDateString('pt-BR') : '--'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {isPago ? (
+                      {isPaid ? (
                         <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">Pago</span>
                       ) : isAtrasado ? (
                         <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">Atrasado</span>
@@ -380,31 +408,18 @@ export default function PaymentsTable() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {p.amount !== undefined && p.amount !== null
-                        ? p.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      {p.amount != null
+                        ? Number(p.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                         : '—'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">{p.payment_date ? new Date(p.payment_date).toLocaleDateString('pt-BR') : '—'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {p.payment_date ? new Date(p.payment_date).toLocaleDateString('pt-BR') : '—'}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        className="text-orange-600 hover:underline"
-                        onClick={() => handleEdit(p)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        className="text-red-600 hover:underline"
-                        onClick={() => handleDelete(p.id)}
-                      >
-                        Excluir
-                      </button>
-                      {p.status === 'Pago' && (
-                        <button
-                          className="text-blue-600 hover:underline"
-                          onClick={() => handleUndo(p.id)}
-                        >
-                          Desfazer
-                        </button>
+                      <button className="text-orange-600 hover:underline" onClick={() => handleEdit(p)}>Editar</button>
+                      <button className="text-red-600 hover:underline" onClick={() => handleDelete(p.id)}>Excluir</button>
+                      {isPaid && (
+                        <button className="text-blue-600 hover:underline" onClick={() => handleUndo(p.id)}>Desfazer</button>
                       )}
                     </td>
                   </tr>

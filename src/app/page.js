@@ -90,6 +90,9 @@ export default function Page() {
     load()
   }, [])
 
+  // ---------- FILTRO DE PAGAMENTOS DE ALUNOS ATIVOS ----------
+  const activeStudentsIds = useMemo(() => students.map(s => s.id), [students])
+
   // ---------- KPIs ----------
   const activeStudents = students.length
   const monthly = useMemo(
@@ -98,20 +101,27 @@ export default function Page() {
   )
   const annual = monthly * 12
 
-  // KPIs do mês atual a partir de payments
+  // KPIs do mês atual a partir de payments (apenas alunos ativos)
   const currentMonth = yyyymm()
-  const pmCurrent = payments6m.filter(p => p.ref_month === currentMonth)
+  const pmCurrent = payments6m.filter(
+    p => p.ref_month === currentMonth && activeStudentsIds.includes(p.student_id)
+  )
   const receivedThisMonth = pmCurrent
     .filter(p => p.payment_date)
     .reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const projectedThisMonth = pmCurrent.reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const pendingThisMonth = Math.max(projectedThisMonth - receivedThisMonth, 0)
 
-  // NOVO: Pagamentos atrasados (qualquer mês, vencidos e não pagos)
+  // Pagamentos atrasados (qualquer mês, vencidos e não pagos, só de alunos ativos)
   const today = new Date()
   today.setHours(0,0,0,0)
   const overdue = payments6m
-    .filter(p => !p.payment_date && p.due_date && new Date(p.due_date) < today)
+    .filter(p =>
+      activeStudentsIds.includes(p.student_id) &&
+      !p.payment_date &&
+      p.due_date &&
+      new Date(p.due_date) < today
+    )
     .reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
   const currency = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
@@ -128,13 +138,13 @@ export default function Page() {
     const [y,mm]=m.split('-'); return new Date(y, Number(mm)-1, 1).toLocaleDateString('pt-BR',{month:'short', year:'2-digit'})
   })
   const receivedSeries = chartMonths.map(m =>
-    payments6m.filter(p => p.ref_month===m && p.payment_date).reduce((s,p)=>s+Number(p.amount||0),0)
+    payments6m.filter(p => p.ref_month===m && p.payment_date && activeStudentsIds.includes(p.student_id)).reduce((s,p)=>s+Number(p.amount||0),0)
   )
   const projectedSeries = chartMonths.map(m =>
-    payments6m.filter(p => p.ref_month===m).reduce((s,p)=>s+Number(p.amount||0),0)
+    payments6m.filter(p => p.ref_month===m && activeStudentsIds.includes(p.student_id)).reduce((s,p)=>s+Number(p.amount||0),0)
   )
 
-  // ---------- VENCIMENTOS PRÓXIMOS (5 DIAS) ----------
+  // ---------- VENCIMENTOS PRÓXIMOS (5 DIAS, só de alunos ativos) ----------
   const fiveDaysLater = new Date(today)
   fiveDaysLater.setDate(today.getDate() + 5)
   fiveDaysLater.setHours(23,59,59,999)
@@ -142,11 +152,12 @@ export default function Page() {
   const upcomingDue = useMemo(() =>
     payments6m.filter(p => {
       if (!p.due_date || p.payment_date) return false // já pago ou sem data
+      if (!activeStudentsIds.includes(p.student_id)) return false
       const due = new Date(p.due_date)
       due.setHours(0,0,0,0)
       return due >= today && due <= fiveDaysLater
     }),
-    [payments6m]
+    [payments6m, activeStudentsIds]
   )
 
   // ---------- ANIVERSARIANTES DO MÊS ----------
