@@ -17,8 +17,8 @@ export default function Header({
           className="h-32 w-32 rounded-lg border border-slate-200 object-contain bg-white"
         />
         <div>
-          <h1 className="text-3xl font-bold text-slate-800">Gestão Fix</h1>
-          <p className="text-slate-500 mt-1">Sua central de controle para alunos e pagamentos.</p>
+          <h1 className="text-6xl font-bold text-slate-800">Painel Fix</h1>
+          <p className="text-slate-500 mt-1">Central de Controle.</p>
         </div>
       </div>
 

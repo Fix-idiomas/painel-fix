@@ -34,6 +34,26 @@ export default function PaymentsTable({ orgId, refreshKey = 0, onChange }) {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
+// === opções do seletor de meses (passado e futuro) ===
+const yyyymm = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+
+// quantos meses quer no passado e no futuro
+const PAST_MONTHS = 12
+const FUTURE_MONTHS = 12   // troque p/ 3, 6, etc. se preferir
+
+const monthOptions = useMemo(() => {
+  const base = new Date()
+  const out = []
+  // passado → futuro (inclui o mês atual quando i = 0)
+  for (let i = -PAST_MONTHS; i <= FUTURE_MONTHS; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth() + i, 1)
+    out.push({
+      value: yyyymm(d),
+      label: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+    })
+  }
+  return out
+}, [])
 
   // Modal states
   const [showIndividualModal, setShowIndividualModal] = useState(false)
@@ -314,22 +334,16 @@ export default function PaymentsTable({ orgId, refreshKey = 0, onChange }) {
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <select
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          >
-            {Array.from({ length: 12 }).map((_, i) => {
-              const d = new Date()
-              d.setMonth(d.getMonth() - i)
-              const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-              const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-              return (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              )
-            })}
-          </select>
+  className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+  value={month}
+  onChange={e => setMonth(e.target.value)}
+>
+  {monthOptions.map(opt => (
+    <option key={opt.value} value={opt.value}>
+      {opt.label}
+    </option>
+  ))}
+</select>
 
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
