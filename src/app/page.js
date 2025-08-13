@@ -6,7 +6,7 @@ import RevenueChart from '@/components/RevenueChart'
 import StudentsTable from '@/components/StudentsTable'
 import TeachersTable from '@/components/TeachersTable'
 import PaymentsTable from '@/components/PaymentsTable'
-import InactiveStudentsTable from '@/components/InactivStudentsTable'
+import InactiveStudentsTable from '@/components/InactiveStudentsTable'
 import PayersTable from '@/components/PayersTable'
 import { downloadCsv } from '@/lib/exportCsv'
 import { supabase } from '@/lib/supabaseClient'
@@ -17,6 +17,14 @@ import { useRouter } from 'next/navigation'
 
 function yyyymm(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`
+}
+
+// normaliza status (pago/cancelado/open)
+const norm = (s) => {
+  const v = String(s ?? '').trim().toLowerCase()
+  if (v === 'pago' || v === 'paid') return 'paid'
+  if (v === 'cancelado' || v === 'cancelada' || v === 'canceled') return 'canceled'
+  return 'open'
 }
 
 function LogoutButton() {
@@ -40,13 +48,33 @@ export default function Page() {
   const router = useRouter()
   const [authLoading, setAuthLoading] = useState(true)
   const [user, setUser] = useState(null)
+  const [orgId, setOrgId] = useState(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) router.push('/login')
-      else setUser(data.user)
+    (async () => {
+      const { data, error } = await supabase.auth.getUser()
+      if (error) {
+        console.error('getUser error:', error.message)
+        setAuthLoading(false)
+        return
+      }
+      if (!data?.user) {
+        router.push('/login')
+        setAuthLoading(false)
+        return
+      }
+
+      setUser(data.user)
+
+      // pega o org_id do JWT (user_metadata)
+      const meta = data.user.user_metadata || {}
+      const oid = Number(meta.org_id ?? NaN)
+      console.log('JWT user_metadata:', meta)
+      console.log('orgId (do JWT):', oid)
+
+      setOrgId(Number.isFinite(oid) ? oid : null)
       setAuthLoading(false)
-    })
+    })()
   }, [router])
 
   // ---------- ESTADOS ----------
@@ -57,38 +85,46 @@ export default function Page() {
   const [tab, setTab] = useState('dashboard')
   const [refreshInactive, setRefreshInactive] = useState(0)
   const [showValues, setShowValues] = useState(true)
+  const [refreshPayments, setRefreshPayments] = useState(0)
 
   // ---------- CARREGAR DADOS ----------
   useEffect(() => {
+    if (orgId == null) return  // só carrega quando souber o org
+
     async function load() {
       setLoading(true); setError(null)
-      // alunos ativos (para KPIs)
+
+      // Alunos ATIVOS da org
       const sRes = await supabase
         .from('students')
         .select('id, name, monthly_fee, status, dob')
         .eq('status', 'Ativo')
+        .eq('org_id', orgId)
 
       if (sRes.error) { setError(sRes.error.message); setLoading(false); return }
       setStudents(sRes.data || [])
 
-      // últimos 6 meses de pagamentos (inclui due_date)
+      // últimos 6 meses
       const base = new Date()
-      const months = Array.from({length:6}).map((_,i)=>{
-        const d = new Date(base.getFullYear(), base.getMonth()-5+i, 1)
-        return yyyymm(d)
+      const months = Array.from({ length: 6 }).map((_, i) => {
+        const d = new Date(base.getFullYear(), base.getMonth() - 5 + i, 1)
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       })
 
       const pRes = await supabase
         .from('payments')
-        .select('id, ref_month, amount, payment_date, due_date, student_id')
+        .select('id, ref_month, amount, payment_date, due_date, student_id, status')
         .in('ref_month', months)
+        .eq('org_id', orgId)
 
       if (pRes.error) { setError(pRes.error.message); setLoading(false); return }
       setPayments6m(pRes.data || [])
       setLoading(false)
     }
+
+    console.log('Carregando dados da org:', orgId)
     load()
-  }, [])
+  }, [orgId, refreshPayments])
 
   // ---------- FILTRO DE PAGAMENTOS DE ALUNOS ATIVOS ----------
   const activeStudentsIds = useMemo(() => students.map(s => s.id), [students])
@@ -101,24 +137,27 @@ export default function Page() {
   )
   const annual = monthly * 12
 
-  // KPIs do mês atual a partir de payments (apenas alunos ativos)
+  // KPIs do mês atual (ignora cancelados; só alunos ativos)
   const currentMonth = yyyymm()
   const pmCurrent = payments6m.filter(
-    p => p.ref_month === currentMonth && activeStudentsIds.includes(p.student_id)
+    p =>
+      p.ref_month === currentMonth &&
+      activeStudentsIds.includes(p.student_id) &&
+      norm(p.status) !== 'canceled'
   )
   const receivedThisMonth = pmCurrent
-    .filter(p => p.payment_date)
+    .filter(p => p.payment_date && norm(p.status) === 'paid')
     .reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const projectedThisMonth = pmCurrent.reduce((sum,p)=> sum + Number(p.amount||0), 0)
   const pendingThisMonth = Math.max(projectedThisMonth - receivedThisMonth, 0)
 
-  // Pagamentos atrasados (qualquer mês, vencidos e não pagos, só de alunos ativos)
+  // Pagamentos atrasados (qualquer mês, vencidos e não pagos, só de alunos ativos e status 'open')
   const today = new Date()
   today.setHours(0,0,0,0)
   const overdue = payments6m
     .filter(p =>
       activeStudentsIds.includes(p.student_id) &&
-      !p.payment_date &&
+      norm(p.status) === 'open' &&
       p.due_date &&
       new Date(p.due_date) < today
     )
@@ -138,10 +177,14 @@ export default function Page() {
     const [y,mm]=m.split('-'); return new Date(y, Number(mm)-1, 1).toLocaleDateString('pt-BR',{month:'short', year:'2-digit'})
   })
   const receivedSeries = chartMonths.map(m =>
-    payments6m.filter(p => p.ref_month===m && p.payment_date && activeStudentsIds.includes(p.student_id)).reduce((s,p)=>s+Number(p.amount||0),0)
+    payments6m
+      .filter(p => p.ref_month===m && p.payment_date && activeStudentsIds.includes(p.student_id) && norm(p.status) !== 'canceled')
+      .reduce((s,p)=>s+Number(p.amount||0),0)
   )
   const projectedSeries = chartMonths.map(m =>
-    payments6m.filter(p => p.ref_month===m && activeStudentsIds.includes(p.student_id)).reduce((s,p)=>s+Number(p.amount||0),0)
+    payments6m
+      .filter(p => p.ref_month===m && activeStudentsIds.includes(p.student_id) && norm(p.status) !== 'canceled')
+      .reduce((s,p)=>s+Number(p.amount||0),0)
   )
 
   // ---------- VENCIMENTOS PRÓXIMOS (5 DIAS, só de alunos ativos) ----------
@@ -151,6 +194,7 @@ export default function Page() {
 
   const upcomingDue = useMemo(() =>
     payments6m.filter(p => {
+      if (norm(p.status) === 'canceled') return false
       if (!p.due_date || p.payment_date) return false // já pago ou sem data
       if (!activeStudentsIds.includes(p.student_id)) return false
       const due = new Date(p.due_date)
@@ -189,7 +233,6 @@ export default function Page() {
     const backup = {
       students,
       payments: payments6m,
-      // adicione outros dados se quiser
     }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
     saveAs(blob, 'backup.json')
@@ -203,13 +246,17 @@ export default function Page() {
     reader.onload = (evt) => {
       try {
         const data = JSON.parse(evt.target.result)
-        // Aqui você pode tratar os dados importados
         alert('Dados importados com sucesso!')
       } catch {
         alert('Arquivo inválido!')
       }
     }
     reader.readAsText(file)
+  }
+
+  // ---------- REFRESH PAGAMENTOS APÓS EDIÇÃO DE ALUNO ----------
+  function handleStudentEdit() {
+    setRefreshPayments(v => v + 1)
   }
 
   // ---------- CONTEÚDO DAS ABAS ----------
@@ -237,7 +284,7 @@ export default function Page() {
             </>
           )}
 
-          {/* KPIs de pagamentos (reais) com label colorido */}
+          {/* KPIs de pagamentos (reais) */}
           <KpiCard label="Recebido (Mês Atual)" value={showValues ? currency(receivedThisMonth) : '•••'} labelClassName="text-green-600" />
           <KpiCard label="Pendente (Mês Atual)" value={showValues ? currency(pendingThisMonth) : '•••'} labelClassName="text-yellow-600" />
           <KpiCard label="Atrasado" value={showValues ? currency(overdue) : '•••'} labelClassName="text-red-600" />
@@ -294,11 +341,21 @@ export default function Page() {
 
   const tabs = [
     { key: 'dashboard', label: 'Visão Geral', content: dashboardContent },
-    { key: 'students', label: 'Alunos Ativos', content: <StudentsTable /> },
+    { key: 'students', label: 'Alunos Ativos', content: <StudentsTable onEdit={handleStudentEdit} /> },
     { key: 'inactive-students', label: 'Alunos Inativos', content: <InactiveStudentsTable refreshKey={refreshInactive} /> },
     { key: 'teachers', label: 'Professores', content: <TeachersTable /> },
     { key: 'payers', label: 'Pagadores', content: <PayersTable /> },
-    { key: 'payments', label: 'Pagamentos', content: <PaymentsTable /> },
+    {
+      key: 'payments',
+      label: 'Pagamentos',
+      content: (
+        <PaymentsTable
+          orgId={orgId}
+          refreshKey={refreshPayments}
+          onChange={() => setRefreshPayments(v => v + 1)}
+        />
+      )
+    },
     { key: 'progress', label: 'Evolução Pedagógica', content: <PedagogicalProgress /> },
   ]
 

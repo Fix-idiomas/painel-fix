@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-export default function StudentsTable({ onInactivate }) {
+export default function StudentsTable({ onInactivate, onEdit }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [students, setStudents] = useState([])
@@ -98,6 +98,36 @@ export default function StudentsTable({ onInactivate }) {
     }
     if (editId) {
       await supabase.from('students').update(dataToSave).eq('id', editId)
+      if (form.due_day || form.monthly_fee) {
+        const hoje = new Date().toISOString().slice(0, 10)
+        const { data: pagamentosFuturos, error: errorBusca } = await supabase
+          .from('payments')
+          .select('id, due_date')
+          .eq('student_id', editId)
+          .is('payment_date', null)
+          .gte('due_date', hoje)
+
+        if (!errorBusca && pagamentosFuturos && pagamentosFuturos.length > 0) {
+          for (const pagamento of pagamentosFuturos) {
+            let updateObj = {}
+            if (form.due_day) {
+              const novaData = new Date(pagamento.due_date)
+              novaData.setDate(Number(form.due_day))
+              updateObj.due_date = novaData.toISOString().slice(0, 10)
+            }
+            if (form.monthly_fee) {
+              updateObj.amount = Number(form.monthly_fee)
+            }
+            if (Object.keys(updateObj).length > 0) {
+              await supabase
+                .from('payments')
+                .update(updateObj)
+                .eq('id', pagamento.id)
+            }
+          }
+        }
+      }
+       if (onEdit) onEdit();
       alert('Aluno atualizado com sucesso!')
     } else {
       // 1. Cadastra o aluno
@@ -133,6 +163,7 @@ export default function StudentsTable({ onInactivate }) {
       } else {
         alert('Aluno cadastrado! (Pagamento não criado por falta de valor ou vencimento)')
       }
+      if (onEdit) onEdit();
     }
     setShowModal(false)
     setEditId(null)
