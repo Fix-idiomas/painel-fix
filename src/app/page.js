@@ -14,6 +14,7 @@ import { saveAs } from 'file-saver'
 import Header from '@/components/Header'
 import PedagogicalProgress from '@/components/PedagogicalProgress'
 import { useRouter } from 'next/navigation'
+import TurmasPanel from '../components/TurmasPanel'
 
 function yyyymm(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`
@@ -50,33 +51,41 @@ export default function Page() {
   const [user, setUser] = useState(null)
   const [orgId, setOrgId] = useState(null)
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase.auth.getUser()
-      if (error) {
-        console.error('getUser error:', error.message)
-        setAuthLoading(false)
-        return
-      }
-      if (!data?.user) {
-        router.push('/login')
-        setAuthLoading(false)
-        return
-      }
-
-      setUser(data.user)
-
-      // pega o org_id do JWT (user_metadata)
-      const meta = data.user.user_metadata || {}
-      const oid = Number(meta.org_id ?? NaN)
-      console.log('JWT user_metadata:', meta)
-      console.log('orgId (do JWT):', oid)
-
-      setOrgId(Number.isFinite(oid) ? oid : null)
+  // ...existing code...
+useEffect(() => {
+  (async () => {
+    // Primeiro, tente pegar a sessão
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData?.session) {
+      router.push('/login')
       setAuthLoading(false)
-    })()
-  }, [router])
+      return
+    }
 
+    // Agora, pegue o usuário
+    const { data, error } = await supabase.auth.getUser()
+    if (error) {
+      console.error('getUser error:', error.message)
+      router.push('/login')
+      setAuthLoading(false)
+      return
+    }
+    if (!data?.user) {
+      router.push('/login')
+      setAuthLoading(false)
+      return
+    }
+
+    setUser(data.user)
+
+    // pega o org_id do JWT (user_metadata)
+    const meta = data.user.user_metadata || {}
+    const oid = Number(meta.org_id ?? NaN)
+    setOrgId(Number.isFinite(oid) ? oid : null)
+    setAuthLoading(false)
+  })()
+}, [router])
+// ...existing code...
   // ---------- ESTADOS ----------
   const [students, setStudents] = useState([])
   const [payments6m, setPayments6m] = useState([])
@@ -357,6 +366,7 @@ export default function Page() {
       )
     },
     { key: 'progress', label: 'Evolução Pedagógica', content: <PedagogicalProgress /> },
+  { key: 'turmas', label: 'Turmas', content: <TurmasPanel /> }
   ]
 
   // Atualiza refreshInactive ao trocar para a aba de inativos
@@ -366,8 +376,11 @@ export default function Page() {
     if (key === 'inactive-students') setRefreshInactive(v => v + 1)
   }
 
-  if (authLoading) return <div>Carregando...</div>
-  if (!user) return null
+ if (authLoading) return <div>Carregando...</div>
+if (!user) {
+  console.log('Usuário não autenticado ou erro na autenticação');
+  return <div>Usuário não autenticado</div>;
+}
 
   return (
     <main>
