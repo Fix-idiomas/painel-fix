@@ -1,37 +1,49 @@
-'use client'
-import { useState } from 'react'
+'use client';
 
-export default function Tabs({ tabs = [], initial = 0 }) {
-  const [active, setActive] = useState(initial)
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+
+export const DEFAULT_TABS = [
+  { label: 'Visão Geral',         href: '/' },
+  { label: 'Alunos Ativos',       href: '/alunos-ativos' },
+  { label: 'Alunos Inativos',     href: '/alunos-inativos' },
+  { label: 'Professores',         href: '/professores' },
+  { label: 'Pagadores',           href: '/pagadores' },
+  { label: 'Pagamentos',          href: '/pagamentos' },
+  { label: 'Evolução Pedagógica', href: '/evolucao' },
+  { label: 'Turmas',              href: '/turmas' },
+];
+
+function isActive(pathname, href) {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
+export default function Tabs({ tabs = DEFAULT_TABS, className = '' }) {
+  const pathname = usePathname() || '/';
 
   return (
-    <div>
-      {/* Barra de abas */}
-      <div className="mb-6 border-b border-slate-200">
-        <nav className="flex -mb-px space-x-6 overflow-x-auto">
-          {tabs.map((t, idx) => {
-            const isActive = idx === active
-            return (
-              <button
-                key={t.key}
-                onClick={() => setActive(idx)}
-                className={`py-4 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors
-                  ${isActive
-                    ? 'border-orange-700 text-orange-700 font-semibold'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
+    <nav className={`w-full border-b bg-white ${className}`}>
+      <ul className="flex gap-1 overflow-x-auto px-2">
+        {tabs.map((t) => {
+          const active = isActive(pathname, t.href);
+          return (
+            <li key={t.href}>
+              <Link
+                href={t.href}
+                className={[
+                  'inline-block whitespace-nowrap rounded-t-md px-3 py-2 text-sm border-b-2',
+                  active
+                    ? 'font-medium border-indigo-600 text-indigo-700 bg-indigo-50'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+                ].join(' ')}
               >
                 {t.label}
-              </button>
-            )
-          })}
-        </nav>
-      </div>
-
-      {/* Conteúdo da aba ativa */}
-      <div>
-        {tabs[active]?.content}
-      </div>
-    </div>
-  )
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
 }

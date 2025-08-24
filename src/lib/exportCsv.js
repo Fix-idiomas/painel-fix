@@ -1,21 +1,22 @@
-export function downloadCsv(filename, rows) {
-  if (!rows || rows.length === 0) {
-    alert('Nada para exportar.')
-    return
+// lib/exportCsv.js
+export function exportCsv(filename, rows, headers) {
+  const csvRows = []
+  if (headers && headers.length) {
+    csvRows.push(headers.join(','))
+  } else if (rows.length) {
+    csvRows.push(Object.keys(rows[0]).join(','))
   }
-  const headers = Object.keys(rows[0])
-  const escape = (v) => {
-    if (v == null) return ''
-    const s = String(v)
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
-    return s
+  for (const row of rows) {
+    const vals = (headers ?? Object.keys(row)).map((h) => {
+      let v = row[h]
+      if (v === null || v === undefined) v = ''
+      v = String(v).replace(/"/g, '""')
+      if (v.search(/[,"\n]/) >= 0) v = `"${v}"`
+      return v
+    })
+    csvRows.push(vals.join(','))
   }
-  const csv = [
-    headers.join(','),
-    ...rows.map(r => headers.map(h => escape(r[h])).join(',')),
-  ].join('\n')
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
