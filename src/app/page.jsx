@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
+
 const fmtBRL = (n) =>
   (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
